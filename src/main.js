@@ -25,6 +25,7 @@ import { hashString } from './noise.js';
 const SETTINGS_KEY = 'mcjs:settings';
 const WORLD_KEY = 'mcjs:world';
 const REACH = 5;
+const SPRINT_DOUBLE_TAP_MS = 350;
 
 const DEFAULT_SETTINGS = {
   render: 7, fov: 70, sens: 100, vol: 70,
@@ -519,10 +520,17 @@ class Game {
         }
         case 'KeyW': {
           const now = performance.now();
-          if (now - this.lastW < 300) this.sprintLatch = true;
+          if (now - this.lastW <= SPRINT_DOUBLE_TAP_MS) {
+            this.sprintLatch = true;
+            this.ui.showToast('Sprinting');
+          }
           this.lastW = now;
           break;
         }
+        case 'ControlLeft':
+        case 'ControlRight':
+          if (this.keys.has('KeyW')) this.ui.showToast('Sprinting');
+          break;
         default:
           if (/^Digit[1-9]$/.test(e.code)) {
             this.selectSlot(Number(e.code.slice(5)) - 1);

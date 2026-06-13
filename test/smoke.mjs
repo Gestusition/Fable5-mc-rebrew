@@ -187,6 +187,24 @@ ok('player collides with walls', () => {
   world.setBlock(SX + 2, groundH + 1, SZ, B.AIR);
   world.setBlock(SX + 2, groundH + 2, SZ, B.AIR);
 });
+ok('sprinting is faster than walking', () => {
+  const flatWorld = {
+    getBlock(_x, y) { return y === 0 ? B.STONE : B.AIR; },
+  };
+  const input = { forward: true, back: false, left: false, right: false, jump: false, sneak: false };
+  const walker = new Player(flatWorld);
+  const sprinter = new Player(flatWorld);
+  walker.teleport(0.5, 1, 0.5);
+  sprinter.teleport(0.5, 1, 0.5);
+  sprinter.sprinting = true;
+  for (let i = 0; i < 120; i++) {
+    walker.update(1 / 60, input);
+    sprinter.update(1 / 60, input);
+  }
+  const walkDistance = 0.5 - walker.pos.z;
+  const sprintDistance = 0.5 - sprinter.pos.z;
+  assert.ok(sprintDistance > walkDistance * 1.25, `${sprintDistance} > ${walkDistance} * 1.25`);
+});
 
 console.log('— block geometry —');
 ok('standalone geometry for every palette block', () => {
