@@ -21,6 +21,9 @@ import { AudioFX } from './audio.js';
 import { Entities } from './entities.js';
 import { UI } from './ui.js';
 import { hashString } from './noise.js';
+import {
+  HOTBAR_SIZE, addToHotbar, consumeHotbarSlot, emptyCounts, emptyHotbar,
+} from './inventory.js';
 
 const SETTINGS_KEY = 'mcjs:settings';
 const WORLD_KEY = 'mcjs:world';
@@ -159,18 +162,28 @@ class Game {
     this.dipT = 1;
 
     // ---------- inventory state ----------
-    this.hotbar = [...DEFAULT_HOTBAR];
-    this.selected = 0;
     this.gameMode = this.saveData?.mode === 'creative' ? 'creative' : 'survival';
+    this.hotbar = this.gameMode === 'survival'
+      ? emptyHotbar()
+      : [...DEFAULT_HOTBAR];
+    this.hotbarCounts = emptyCounts();
+    this.selected = 0;
     this.maxHealth = 20;
     this.health = this.maxHealth;
-    if (this.saveData?.hotbar?.length === 9) this.hotbar = this.saveData.hotbar.slice();
+    if (this.saveData?.hotbar?.length === HOTBAR_SIZE) {
+      if (this.gameMode === 'creative' || this.saveData?.hotbarCounts?.length === HOTBAR_SIZE) {
+        this.hotbar = this.saveData.hotbar.slice();
+        this.hotbarCounts = this.saveData?.hotbarCounts?.length === HOTBAR_SIZE
+          ? this.saveData.hotbarCounts.slice()
+          : emptyCounts();
+      }
+    }
     if (Number.isInteger(this.saveData?.slot)) this.selected = this.saveData.slot;
 
     // ---------- icons ----------
     this.icons = this.makeIcons();
     this.ui.setIcons(this.icons);
-    this.ui.updateHotbar(this.hotbar, this.selected);
+    this.refreshHotbar();
     this.ui.setGameMode(this.gameMode);
 
     // ---------- game state ----------
@@ -268,6 +281,7 @@ class Game {
     this.player = new Player(this.world);
     this.spawn = this.world.gen.findSpawn();
     this.usedSavedPos = false;
+    this.spawnLandingProtected = !savedPlayer;
     this.health = this.gameMode === 'survival' && savedPlayer?.health > 0
       ? Math.min(this.maxHealth, savedPlayer.health)
       : this.maxHealth;
@@ -306,9 +320,12 @@ class Game {
     const seed = this.parseSeed(seedStr);
     localStorage.removeItem(WORLD_KEY);
     this.saveData = null;
-    this.hotbar = [...DEFAULT_HOTBAR];
+    this.hotbar = this.gameMode === 'survival'
+      ? emptyHotbar()
+      : [...DEFAULT_HOTBAR];
+    this.hotbarCounts = emptyCounts();
     this.selected = 0;
-    this.ui.updateHotbar(this.hotbar, this.selected);
+    this.refreshHotbar();
     this.createWorld(seed, null, null);
     this.ui.setSeedPlaceholder(this.worldSeed);
     this.play();
@@ -319,9 +336,15 @@ class Game {
     if (this.gameMode === 'survival') {
       this.player.flying = false;
       this.health = this.maxHealth;
+      this.hotbar = emptyHotbar();
+    } else {
+      this.hotbar = [...DEFAULT_HOTBAR];
     }
+    this.hotbarCounts = emptyCounts();
+    this.selected = 0;
     this.ui.setGameMode(this.gameMode);
     this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
+    this.refreshHotbar();
   }
 
   finishLoading() {
@@ -331,11 +354,12 @@ class Game {
       let y = WORLD_H - 2;
       while (y > 1 && !BLOCKS[this.world.getBlock(bx, y, bz)].solid) y--;
       this.player.teleport(bx + 0.5, y + 1, bz + 0.5);
+      this.spawnLandingProtected = true;
     }
     this.state = 'playing';
     this.ui.hideAllMenus();
     this.ui.show('hud');
-    this.ui.updateHotbar(this.hotbar, this.selected);
+    this.refreshHotbar();
     this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
   }
 
@@ -386,6 +410,7 @@ class Game {
   respawn() {
     this.health = this.maxHealth;
     this.usedSavedPos = false;
+    this.spawnLandingProtected = true;
     this.player.teleport(this.spawn.x, this.spawn.y + 2, this.spawn.z);
     this.ui.updateHealth(this.health, this.maxHealth, true);
     this.ui.hideAllMenus();
@@ -416,6 +441,7 @@ class Game {
       },
       mode: this.gameMode,
       hotbar: this.hotbar,
+      hotbarCounts: this.hotbarCounts,
       slot: this.selected,
       time: this.sky.timeOfDay,
     };
@@ -590,24 +616,38 @@ class Game {
   // Hotbar / picker
   // ============================================================
 
+  refreshHotbar() {
+    this.ui.updateHotbar(
+      this.hotbar,
+      this.selected,
+      this.hotbarCounts,
+      this.gameMode === 'survival',
+    );
+  }
+
   selectSlot(i) {
     this.selected = i;
-    this.ui.updateHotbar(this.hotbar, i);
+    this.refreshHotbar();
     this.ui.setPickerSelected(i);
-    this.ui.showToast(BLOCKS[this.hotbar[i]].name);
+    if (this.hotbar[i] !== B.AIR) this.ui.showToast(BLOCKS[this.hotbar[i]].name);
     this.dipT = 0;
     this.audio.pop();
   }
 
   assignBlock(id) {
+    if (this.gameMode !== 'creative') return;
     this.hotbar[this.selected] = id;
-    this.ui.updateHotbar(this.hotbar, this.selected);
+    this.refreshHotbar();
     this.ui.showToast(BLOCKS[id].name);
     this.audio.click();
     this.dipT = 0;
   }
 
   openPicker() {
+    if (this.gameMode !== 'creative') {
+      this.ui.showToast('Creative inventory is unavailable in Survival');
+      return;
+    }
     this.pickerOpen = true;
     this.mining = false;
     this.rmbHeld = false;
@@ -698,6 +738,7 @@ class Game {
       return;
     }
     this.world.setBlock(target.x, target.y, target.z, B.AIR);
+    this.collectBlock(id);
     this.particles.spawnBlockBreak(target.x, target.y, target.z, id);
     this.audio.blockBreak(id);
   }
@@ -706,6 +747,7 @@ class Game {
     const target = this.currentTarget();
     if (!target) return;
     const id = this.hotbar[this.selected];
+    if (id === B.AIR || (this.gameMode === 'survival' && this.hotbarCounts[this.selected] <= 0)) return;
     const def = BLOCKS[id];
     const targetDef = BLOCKS[target.id];
 
@@ -735,16 +777,35 @@ class Game {
     if (def.support === 'sand' && below !== B.SAND && below !== B.CACTUS) return;
 
     this.world.setBlock(cx, cy, cz, id);
+    this.consumeSelectedBlock();
     this.audio.blockPlace(id);
     this.swing();
   }
 
   pickTargetBlock() {
+    if (this.gameMode !== 'creative') return;
     const target = this.currentTarget();
     if (!target) return;
     if (PALETTE.includes(target.id)) {
       this.assignBlock(target.id);
     }
+  }
+
+  collectBlock(id) {
+    if (this.gameMode !== 'survival' || id === B.AIR || id === B.WATER) return;
+    const slot = addToHotbar(this.hotbar, this.hotbarCounts, id, this.selected);
+    if (slot < 0) {
+      this.ui.showToast('Inventory full');
+      return;
+    }
+    this.refreshHotbar();
+    this.ui.showToast(`Picked up ${BLOCKS[id].name}`);
+  }
+
+  consumeSelectedBlock() {
+    if (this.gameMode !== 'survival') return;
+    consumeHotbarSlot(this.hotbar, this.hotbarCounts, this.selected);
+    this.refreshHotbar();
   }
 
   // ============================================================
@@ -788,6 +849,14 @@ class Game {
 
   updateHand(dt) {
     const id = this.hotbar[this.selected];
+    if (id === B.AIR) {
+      if (this.heldMesh) {
+        this.handGroup.remove(this.heldMesh);
+        this.heldMesh = null;
+      }
+      this.heldId = B.AIR;
+      return;
+    }
     if (!this.heldMesh || this.heldId !== id) {
       if (this.heldMesh) this.handGroup.remove(this.heldMesh);
       this.heldMesh = new THREE.Mesh(this.heldGeometry(id), this.materials.solid);
@@ -975,12 +1044,21 @@ class Game {
       if (ev.type === 'step') this.audio.step(ev.id);
       else if (ev.type === 'land') {
         this.audio.land(ev.impact);
-        const damage = fallDamageForDistance(ev.distance);
-        if (damage > 0) this.damage(damage, 'Fell from a high place');
+        if (this.spawnLandingProtected) {
+          this.spawnLandingProtected = false;
+          p.fallDistance = 0;
+        } else {
+          const damage = fallDamageForDistance(ev.distance);
+          if (damage > 0) this.damage(damage, 'Fell from a high place');
+        }
       }
       else if (ev.type === 'splash') this.audio.splash();
     }
     p.events.length = 0;
+    if (this.spawnLandingProtected && p.onGround) {
+      this.spawnLandingProtected = false;
+      p.fallDistance = 0;
+    }
     if (this.state !== 'playing') return;
 
     // ---- interaction & world streaming ----

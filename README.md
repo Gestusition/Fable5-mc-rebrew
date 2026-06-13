@@ -51,14 +51,14 @@ npm install && npm test
 
 ### Gameplay
 - **Survival and Creative modes** selectable from the title screen
-- Survival has 20 health points, a heart HUD, death/respawning, and disables flight
+- Survival starts with an empty hotbar, collects mined blocks into stacks, consumes placed blocks, has 20 health points, a heart HUD, death/respawning, and disables flight
 - **Minecraft-style fall damage**: the first 3 blocks are safe, then damage is `ceil(fall distance - 3)`; water and Creative flight reset the fall
 - First-person controller with Minecraft-tuned physics: walking 4.3 m/s, sprinting with **CTRL or double-tap W** (+FOV kick), sneaking **with edge protection**, swimming, creative **flying** (double-tap SPACE)
 - Hold-to-mine with per-block hardness; bedrock is unbreakable
 - Block placing with support rules (torches need floors, cacti need sand…), can't place inside yourself
 - **Falling sand & gravel**, chained support breaking (snap a flower's block and it pops)
 - **TNT** — break it to ignite: fuse blink, explosion crater, knockback, camera shake, chain reactions
-- 9-slot hotbar (1–9 / mouse wheel), middle-click pick-block, **E** opens a creative block picker with 35 block types
+- 9-slot hotbar (1–9 / mouse wheel); middle-click pick-block and the **E** block picker are Creative-only
 - World persistence — seed, your edits, position and time of day save to `localStorage` automatically
 - F3 debug screen, pause menu, options (render distance, FOV, sensitivity, volume, bobbing, clouds, music, smooth lighting)
 
@@ -100,12 +100,13 @@ src/
   particles.js    pooled billboard digging/explosion particles (1 draw call)
   audio.js        WebAudio synth: materials, explosions, generative music
   entities.js     falling blocks, primed TNT, explosions
+  inventory.js    Survival hotbar stacks and item consumption
   ui.js           DOM: title, hotbar, picker, menus, F3 overlay
   main.js         game state machine, input, mining/placing, held block, save/load, loop
 ```
 
 ## Deliberate scope cuts
 
-No mobs or item drops/inventory survival economy (blocks remain infinite in both modes),
+No mobs, crafting, or dropped item entities,
 no water flow simulation, no redstone. Torch light is distance-based (it can bleed through
 thin walls), and skylight uses a heightmap rather than flood-fill.

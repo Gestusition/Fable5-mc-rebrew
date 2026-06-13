@@ -151,8 +151,11 @@ export class UI {
       num.textContent = String(i + 1);
       const img = document.createElement('img');
       img.draggable = false;
+      const count = document.createElement('span');
+      count.className = 'slot-count';
       slot.appendChild(num);
       slot.appendChild(img);
+      slot.appendChild(count);
       bar.appendChild(slot);
       this.slotEls.push(slot);
     }
@@ -163,18 +166,32 @@ export class UI {
     this._buildPicker();
   }
 
-  updateHotbar(hotbar, selected) {
+  updateHotbar(hotbar, selected, counts = [], showCounts = false) {
     hotbar.forEach((id, i) => {
       const img = this.slotEls[i].querySelector('img');
       const url = this.iconUrls.get(id);
-      if (url && img.src !== url) img.src = url;
+      if (url) {
+        if (img.src !== url) img.src = url;
+        img.style.visibility = 'visible';
+      } else {
+        img.removeAttribute('src');
+        img.style.visibility = 'hidden';
+      }
+      const count = this.slotEls[i].querySelector('.slot-count');
+      count.textContent = showCounts && counts[i] > 1 ? String(counts[i]) : '';
       this.slotEls[i].classList.toggle('selected', i === selected);
     });
     if (this.pickerSlotEls) {
       hotbar.forEach((id, i) => {
         const img = this.pickerSlotEls[i].querySelector('img');
         const url = this.iconUrls.get(id);
-        if (url && img.src !== url) img.src = url;
+        if (url) {
+          if (img.src !== url) img.src = url;
+          img.style.visibility = 'visible';
+        } else {
+          img.removeAttribute('src');
+          img.style.visibility = 'hidden';
+        }
       });
     }
   }
@@ -218,8 +235,11 @@ export class UI {
       num.textContent = String(i + 1);
       const img = document.createElement('img');
       img.draggable = false;
+      const count = document.createElement('span');
+      count.className = 'slot-count';
       slot.appendChild(num);
       slot.appendChild(img);
+      slot.appendChild(count);
       slot.addEventListener('click', () => this.h.onHotbarSelect(i));
       bar.appendChild(slot);
       this.pickerSlotEls.push(slot);

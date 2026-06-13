@@ -12,6 +12,9 @@ import { WorldGen, CHUNK, WORLD_H, SEA, BIOME_NAMES } from '../src/worldgen.js';
 import { World } from '../src/world.js';
 import { buildBlockGeometry } from '../src/mesher.js';
 import { Player, fallDamageForDistance, raycastVoxel } from '../src/player.js';
+import {
+  MAX_STACK, addToHotbar, consumeHotbarSlot, emptyCounts, emptyHotbar,
+} from '../src/inventory.js';
 
 const fakeScene = { add() {}, remove() {} };
 const fakeMaterials = { solid: {}, water: {} };
@@ -204,6 +207,31 @@ ok('sprinting is faster than walking', () => {
   const walkDistance = 0.5 - walker.pos.z;
   const sprintDistance = 0.5 - sprinter.pos.z;
   assert.ok(sprintDistance > walkDistance * 1.25, `${sprintDistance} > ${walkDistance} * 1.25`);
+});
+
+console.log('— survival inventory —');
+ok('survival hotbar starts empty and stacks mined blocks', () => {
+  const hotbar = emptyHotbar();
+  const counts = emptyCounts();
+  assert.deepStrictEqual(hotbar, Array(9).fill(B.AIR));
+  assert.strictEqual(addToHotbar(hotbar, counts, B.STONE, 0), 0);
+  assert.strictEqual(addToHotbar(hotbar, counts, B.STONE, 0), 0);
+  assert.strictEqual(hotbar[0], B.STONE);
+  assert.strictEqual(counts[0], 2);
+  consumeHotbarSlot(hotbar, counts, 0);
+  consumeHotbarSlot(hotbar, counts, 0);
+  assert.strictEqual(hotbar[0], B.AIR);
+  assert.strictEqual(counts[0], 0);
+});
+ok('full stacks spill into the next empty slot', () => {
+  const hotbar = emptyHotbar();
+  const counts = emptyCounts();
+  hotbar[0] = B.DIRT;
+  counts[0] = MAX_STACK;
+  assert.strictEqual(addToHotbar(hotbar, counts, B.DIRT, 0), 1);
+  assert.strictEqual(counts[0], MAX_STACK);
+  assert.strictEqual(hotbar[1], B.DIRT);
+  assert.strictEqual(counts[1], 1);
 });
 
 console.log('— block geometry —');
