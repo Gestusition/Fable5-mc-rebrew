@@ -13,7 +13,7 @@ import {
 import { B, BLOCKS, PALETTE, DEFAULT_HOTBAR } from './blocks.js';
 import { CHUNK, WORLD_H, BIOME_NAMES } from './worldgen.js';
 import { World } from './world.js';
-import { Player, raycastVoxel } from './player.js';
+import { Player, fallDamageForDistance, raycastVoxel } from './player.js';
 import { buildBlockGeometry } from './mesher.js';
 import { Sky } from './sky.js';
 import { Particles } from './particles.js';
@@ -54,6 +54,9 @@ class Game {
       getSettings: () => this.settings,
       onPickBlock: (id) => this.assignBlock(id),
       onHotbarSelect: (i) => { this.selectSlot(i); },
+      onToggleMode: () => this.toggleGameMode(),
+      onRespawn: () => this.respawn(),
+      onDeathQuit: () => this.quitAfterDeath(),
       onUiClick: () => { this.audio.ensure(); this.audio.click(); },
     });
 
@@ -157,6 +160,9 @@ class Game {
     // ---------- inventory state ----------
     this.hotbar = [...DEFAULT_HOTBAR];
     this.selected = 0;
+    this.gameMode = this.saveData?.mode === 'creative' ? 'creative' : 'survival';
+    this.maxHealth = 20;
+    this.health = this.maxHealth;
     if (this.saveData?.hotbar?.length === 9) this.hotbar = this.saveData.hotbar.slice();
     if (Number.isInteger(this.saveData?.slot)) this.selected = this.saveData.slot;
 
@@ -164,6 +170,7 @@ class Game {
     this.icons = this.makeIcons();
     this.ui.setIcons(this.icons);
     this.ui.updateHotbar(this.hotbar, this.selected);
+    this.ui.setGameMode(this.gameMode);
 
     // ---------- game state ----------
     this.state = 'title';
@@ -260,15 +267,19 @@ class Game {
     this.player = new Player(this.world);
     this.spawn = this.world.gen.findSpawn();
     this.usedSavedPos = false;
+    this.health = this.gameMode === 'survival' && savedPlayer?.health > 0
+      ? Math.min(this.maxHealth, savedPlayer.health)
+      : this.maxHealth;
     if (savedPlayer) {
       this.player.teleport(savedPlayer.x, savedPlayer.y, savedPlayer.z);
       this.player.yaw = savedPlayer.yaw || 0;
       this.player.pitch = savedPlayer.pitch || 0;
-      this.player.flying = !!savedPlayer.flying;
+      this.player.flying = this.gameMode === 'creative' && !!savedPlayer.flying;
       this.usedSavedPos = true;
     } else {
       this.player.teleport(this.spawn.x, this.spawn.y + 1, this.spawn.z);
     }
+    this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
     this.sky.setTimeOfDay(this.saveData?.time ?? 0.1); // fresh worlds start mid-morning
   }
 
@@ -302,6 +313,16 @@ class Game {
     this.play();
   }
 
+  toggleGameMode() {
+    this.gameMode = this.gameMode === 'survival' ? 'creative' : 'survival';
+    if (this.gameMode === 'survival') {
+      this.player.flying = false;
+      this.health = this.maxHealth;
+    }
+    this.ui.setGameMode(this.gameMode);
+    this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
+  }
+
   finishLoading() {
     if (!this.usedSavedPos) {
       // snap to the real surface (caves may have carved under the estimate)
@@ -314,6 +335,7 @@ class Game {
     this.ui.hideAllMenus();
     this.ui.show('hud');
     this.ui.updateHotbar(this.hotbar, this.selected);
+    this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
   }
 
   pause() {
@@ -341,6 +363,42 @@ class Game {
     document.exitPointerLock?.();
   }
 
+  damage(amount, message) {
+    if (this.gameMode !== 'survival' || this.state !== 'playing' || amount <= 0) return;
+    this.health = Math.max(0, this.health - amount);
+    this.ui.updateHealth(this.health, this.maxHealth, true);
+    this.ui.flashDamage();
+    if (this.health <= 0) this.die(message);
+  }
+
+  die(message) {
+    this.state = 'dead';
+    this.mining = false;
+    this.rmbHeld = false;
+    this.keys.clear();
+    this.sprintLatch = false;
+    this.player.flying = false;
+    this.ui.showDeath(message);
+    document.exitPointerLock?.();
+  }
+
+  respawn() {
+    this.health = this.maxHealth;
+    this.usedSavedPos = false;
+    this.player.teleport(this.spawn.x, this.spawn.y + 2, this.spawn.z);
+    this.ui.updateHealth(this.health, this.maxHealth, true);
+    this.ui.hideAllMenus();
+    this.ui.show('loading');
+    this.state = 'loading';
+    this.lockPointer();
+  }
+
+  quitAfterDeath() {
+    this.health = this.maxHealth;
+    this.player.teleport(this.spawn.x, this.spawn.y + 2, this.spawn.z);
+    this.quitToTitle();
+  }
+
   // ============================================================
   // Persistence
   // ============================================================
@@ -353,7 +411,9 @@ class Game {
       player: {
         x: this.player.pos.x, y: this.player.pos.y, z: this.player.pos.z,
         yaw: this.player.yaw, pitch: this.player.pitch, flying: this.player.flying,
+        health: this.health,
       },
+      mode: this.gameMode,
       hotbar: this.hotbar,
       slot: this.selected,
       time: this.sky.timeOfDay,
@@ -439,13 +499,17 @@ class Game {
           this.openPicker();
           break;
         case 'KeyF':
-          this.player.flying = !this.player.flying;
-          this.ui.showToast(this.player.flying ? 'Flying enabled' : 'Flying disabled');
+          if (this.gameMode === 'creative') {
+            this.player.flying = !this.player.flying;
+            this.ui.showToast(this.player.flying ? 'Flying enabled' : 'Flying disabled');
+          } else {
+            this.ui.showToast('Flying is Creative only');
+          }
           break;
         case 'Space': {
           e.preventDefault();
           const now = performance.now();
-          if (now - this.lastSpace < 320) {
+          if (this.gameMode === 'creative' && now - this.lastSpace < 320) {
             this.player.flying = !this.player.flying;
             if (this.player.flying) this.player.vel.y = 0;
             this.ui.showToast(this.player.flying ? 'Flying enabled' : 'Flying disabled');
@@ -890,17 +954,26 @@ class Game {
 
     // void rescue
     if (p.pos.y < -14) {
-      p.teleport(this.spawn.x, Math.max(this.spawn.y + 2, 70), this.spawn.z);
-      p.vel.set(0, 0, 0);
+      if (this.gameMode === 'survival') {
+        this.damage(this.maxHealth, 'Fell out of the world');
+      } else {
+        p.teleport(this.spawn.x, Math.max(this.spawn.y + 2, 70), this.spawn.z);
+      }
+      if (this.state !== 'playing') return;
     }
 
     // ---- player audio events ----
     for (const ev of p.events) {
       if (ev.type === 'step') this.audio.step(ev.id);
-      else if (ev.type === 'land') { this.audio.land(ev.impact); if (ev.impact > 22) this.ui.flashDamage(); }
+      else if (ev.type === 'land') {
+        this.audio.land(ev.impact);
+        const damage = fallDamageForDistance(ev.distance);
+        if (damage > 0) this.damage(damage, 'Fell from a high place');
+      }
       else if (ev.type === 'splash') this.audio.splash();
     }
     p.events.length = 0;
+    if (this.state !== 'playing') return;
 
     // ---- interaction & world streaming ----
     if (this.locked && !this.pickerOpen) this.updateInteraction(dt);
@@ -975,7 +1048,7 @@ class Game {
       `Block: ${bx} ${by} ${bz}   Chunk: ${cx} ${cz} [${bx & 15} ${bz & 15}]`,
       `Facing: ${facing} (yaw ${yawDeg.toFixed(1)}°, pitch ${THREE.MathUtils.radToDeg(p.pitch).toFixed(1)}°)`,
       `Biome: ${biome}   Time: ${this.sky.clockString()}`,
-      `Seed: ${this.worldSeed}`,
+      `Seed: ${this.worldSeed}   Mode: ${this.gameMode}   Health: ${this.health}/${this.maxHealth}`,
       `Chunks: ${this.world.countLoaded()} ready / ${this.world.chunks.size} loaded   Edits: ${this.world.editCount}`,
       `Entities: ${this.entities.list.length}   Particles: ${this.particles.list.length}`,
       `Draw calls: ${this.lastDrawInfo.calls}   Tris: ${(this.lastDrawInfo.triangles / 1000).toFixed(1)}k`,

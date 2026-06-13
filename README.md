@@ -8,6 +8,10 @@ at startup and every sound is synthesized with WebAudio.
 
 ![Genre](https://img.shields.io/badge/genre-voxel%20sandbox-green) ![Engine](https://img.shields.io/badge/engine-three.js-blue)
 
+## Play Online
+
+[Launch the GitHub Pages build](https://gestusition.github.io/Fable5-mc-rebrew/)
+
 ## Running
 
 The game is plain static HTML + ES modules (Three.js comes from a CDN import map), so any
@@ -46,6 +50,9 @@ npm install && npm test
 - Block-breaking **crack overlay**, black target outline, digging particles that sample the block's texture
 
 ### Gameplay
+- **Survival and Creative modes** selectable from the title screen
+- Survival has 20 health points, a heart HUD, death/respawning, and disables flight
+- **Minecraft-style fall damage**: the first 3 blocks are safe, then damage is `ceil(fall distance - 3)`; water and Creative flight reset the fall
 - First-person controller with Minecraft-tuned physics: walking 4.3 m/s, sprinting (+FOV kick), sneaking **with edge protection**, swimming, creative **flying** (double-tap SPACE)
 - Hold-to-mine with per-block hardness; bedrock is unbreakable
 - Block placing with support rules (torches need floors, cacti need sand…), can't place inside yourself
@@ -67,7 +74,7 @@ npm install && npm test
 | Jump / swim up | SPACE |
 | Sneak / fly down | SHIFT |
 | Sprint | CTRL or double-tap W |
-| Toggle fly | Double-tap SPACE (or F) |
+| Toggle fly (Creative) | Double-tap SPACE (or F) |
 | Break block | Hold LEFT CLICK |
 | Place block | RIGHT CLICK |
 | Pick block | MIDDLE CLICK |
@@ -99,6 +106,6 @@ src/
 
 ## Deliberate scope cuts
 
-No mobs, no item drops/inventory survival economy (it plays like creative with timed mining),
+No mobs or item drops/inventory survival economy (blocks remain infinite in both modes),
 no water flow simulation, no redstone. Torch light is distance-based (it can bleed through
 thin walls), and skylight uses a heightmap rather than flood-fill.

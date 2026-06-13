@@ -11,7 +11,7 @@ import { B, BLOCKS, PALETTE } from '../src/blocks.js';
 import { WorldGen, CHUNK, WORLD_H, SEA, BIOME_NAMES } from '../src/worldgen.js';
 import { World } from '../src/world.js';
 import { buildBlockGeometry } from '../src/mesher.js';
-import { Player, raycastVoxel } from '../src/player.js';
+import { Player, fallDamageForDistance, raycastVoxel } from '../src/player.js';
 
 const fakeScene = { add() {}, remove() {} };
 const fakeMaterials = { solid: {}, water: {} };
@@ -141,6 +141,15 @@ for (let y = groundH + 1; y < groundH + 12; y++)
     for (let dz = -1; dz <= 1; dz++)
       world.setBlock(SX + dx, y, SZ + dz, B.AIR);
 
+ok('fall damage matches Minecraft distance thresholds', () => {
+  assert.strictEqual(fallDamageForDistance(0), 0);
+  assert.strictEqual(fallDamageForDistance(3), 0);
+  assert.strictEqual(fallDamageForDistance(3.01), 1);
+  assert.strictEqual(fallDamageForDistance(4), 1);
+  assert.strictEqual(fallDamageForDistance(4.01), 2);
+  assert.strictEqual(fallDamageForDistance(23), 20);
+});
+
 ok('player falls and lands on the surface', () => {
   const p = new Player(world);
   p.teleport(SX + 0.5, groundH + 8, SZ + 0.5);
@@ -148,6 +157,22 @@ ok('player falls and lands on the surface', () => {
   for (let i = 0; i < 600; i++) p.update(1 / 60, input);
   assert.ok(p.onGround, 'landed');
   assert.ok(Math.abs(p.pos.y - (groundH + 1)) < 0.1, `rests on surface (y=${p.pos.y}, h=${groundH})`);
+  const landing = p.events.find((event) => event.type === 'land');
+  assert.ok(landing, 'landing event emitted');
+  assert.strictEqual(fallDamageForDistance(landing.distance), 4);
+});
+ok('water resets accumulated fall distance', () => {
+  const p = new Player(world);
+  world.setBlock(SX, groundH + 1, SZ, B.WATER);
+  world.setBlock(SX, groundH + 2, SZ, B.WATER);
+  p.teleport(SX + 0.5, groundH + 9, SZ + 0.5);
+  const input = { forward: false, back: false, left: false, right: false, jump: false, sneak: false };
+  for (let i = 0; i < 600 && !p.onGround; i++) p.update(1 / 60, input);
+  const landing = p.events.find((event) => event.type === 'land');
+  assert.ok(landing, 'landed through the water');
+  assert.strictEqual(fallDamageForDistance(landing.distance), 0);
+  world.setBlock(SX, groundH + 1, SZ, B.AIR);
+  world.setBlock(SX, groundH + 2, SZ, B.AIR);
 });
 ok('player collides with walls', () => {
   const p = new Player(world);

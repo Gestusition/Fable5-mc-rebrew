@@ -32,6 +32,10 @@ const SUBSTEP = 1 / 120;
 
 const isSolidId = (id) => BLOCKS[id] ? BLOCKS[id].solid : false;
 
+export function fallDamageForDistance(distance) {
+  return Math.max(0, Math.ceil(distance - 3));
+}
+
 export class Player {
   constructor(world) {
     this.world = world;
@@ -52,12 +56,14 @@ export class Player {
     this.walkCycle = 0;     // accumulates with horizontal travel (view bob)
     this.bobStrength = 0;   // 0..1, eases in/out with movement
     this.stepAccum = 0;
+    this.fallDistance = 0;
     this.events = [];       // {type, id?, impact?} drained by main
   }
 
   teleport(x, y, z) {
     this.pos.set(x, y, z);
     this.vel.set(0, 0, 0);
+    this.fallDistance = 0;
   }
 
   eyePosition(out = new THREE.Vector3()) {
@@ -152,7 +158,14 @@ export class Player {
     // ---- integrate + collide (Y first, then X/Z) ----
     this.onGround = false;
     this.hitWall = false;
+    const beforeY = this.pos.y;
     this.moveAxis(1, this.vel.y * h);
+    const movedY = this.pos.y - beforeY;
+    if (this.flying || this.inWater) {
+      this.fallDistance = 0;
+    } else if (movedY < 0) {
+      this.fallDistance -= movedY;
+    }
     // sticky ground: tiny drift around the collision epsilon must not
     // flicker the grounded state (jumping, footsteps, sneak guard rely on it)
     if (!this.onGround && this.vel.y <= 0 && !this.flying && this.hasSupportBelow()) {
@@ -164,8 +177,14 @@ export class Player {
     this.moveAxisGuarded(2, this.vel.z * h, guard);
 
     // ---- events ----
-    if (!wasOnGround && this.onGround && prevVy < -9) {
-      this.events.push({ type: 'land', impact: -prevVy, id: this.blockBelow() });
+    if (!wasOnGround && this.onGround) {
+      this.events.push({
+        type: 'land',
+        impact: -prevVy,
+        distance: this.fallDistance,
+        id: this.blockBelow(),
+      });
+      this.fallDistance = 0;
     }
     if (!wasInWater && this.inWater && prevVy < -4) {
       this.events.push({ type: 'splash' });

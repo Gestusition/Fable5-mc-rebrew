@@ -43,6 +43,7 @@ export class UI {
       options: this.$('options-menu'),
       controls: this.$('controls-menu'),
       picker: this.$('picker'),
+      death: this.$('death-screen'),
       hud: this.$('hud'),
     };
 
@@ -63,7 +64,7 @@ export class UI {
   show(name) { this.screens[name].classList.remove('hidden'); }
   hide(name) { this.screens[name].classList.add('hidden'); }
   hideAllMenus() {
-    for (const k of ['title', 'loading', 'pause', 'options', 'controls', 'picker']) this.hide(k);
+    for (const k of ['title', 'loading', 'pause', 'options', 'controls', 'picker', 'death']) this.hide(k);
   }
 
   _wireMenus() {
@@ -71,6 +72,7 @@ export class UI {
 
     click('btn-play', () => this.h.onPlay());
     click('btn-new-world', () => this.h.onNewWorld(this.$('seed-input').value.trim()));
+    click('btn-game-mode', () => this.h.onToggleMode());
     click('btn-title-controls', () => { this.controlsReturn = 'title'; this.hide('title'); this.show('controls'); });
 
     click('btn-resume', () => this.h.onResume());
@@ -79,6 +81,8 @@ export class UI {
     click('btn-controls', () => { this.controlsReturn = 'pause'; this.hide('pause'); this.show('controls'); });
     click('btn-options-done', () => { this.hide('options'); this.show('pause'); });
     click('btn-controls-done', () => { this.hide('controls'); this.show(this.controlsReturn); });
+    click('btn-respawn', () => this.h.onRespawn());
+    click('btn-death-title', () => this.h.onDeathQuit());
 
     // option sliders
     const slider = (id, valId, key, fmt = (v) => v) => {
@@ -122,6 +126,10 @@ export class UI {
 
   setSeedPlaceholder(seed) {
     this.$('seed-input').placeholder = `Seed (current: ${seed})`;
+  }
+
+  setGameMode(mode) {
+    this.$('btn-game-mode').textContent = `Game Mode: ${mode === 'survival' ? 'Survival' : 'Creative'}`;
   }
 
   setLoadingProgress(frac) {
@@ -228,6 +236,35 @@ export class UI {
 
   setUnderwater(on) {
     this.$('underwater-overlay').style.opacity = on ? '1' : '0';
+  }
+
+  updateHealth(health, maxHealth, visible) {
+    const bar = this.$('health');
+    bar.classList.toggle('hidden', !visible);
+    if (!visible) return;
+    if (!this.heartEls) {
+      this.heartEls = [];
+      for (let i = 0; i < maxHealth / 2; i++) {
+        const heart = document.createElement('span');
+        heart.className = 'heart';
+        const fill = document.createElement('span');
+        fill.className = 'heart-fill';
+        fill.textContent = '\u2665';
+        heart.textContent = '\u2665';
+        heart.appendChild(fill);
+        bar.appendChild(heart);
+        this.heartEls.push(fill);
+      }
+    }
+    this.heartEls.forEach((fill, i) => {
+      const points = Math.max(0, Math.min(2, health - i * 2));
+      fill.style.width = `${points * 50}%`;
+    });
+  }
+
+  showDeath(message) {
+    this.$('death-message').textContent = message;
+    this.show('death');
   }
 
   flashDamage() {

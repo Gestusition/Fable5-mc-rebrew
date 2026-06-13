@@ -23,6 +23,7 @@
 <div id="hud" class="hidden">
   <div id="crosshair"></div>
   <div id="item-name"></div>
+  <div id="health"></div>
   <div id="hotbar"></div>
   <div id="debug" class="hidden"></div>
   <div id="underwater-overlay"></div>
@@ -46,6 +47,7 @@
     <div class="splash" id="splash-text">Now in JavaScript!</div>
     <div class="menu-buttons">
       <button class="mc-button" id="btn-play">Play World</button>
+      <button class="mc-button" id="btn-game-mode">Game Mode: Survival</button>
       <div class="seed-row">
         <input id="seed-input" type="text" placeholder="Seed (leave empty = random)" spellcheck="false" />
         <button class="mc-button small" id="btn-new-world">Create New World</button>
@@ -65,6 +67,16 @@
     <div class="loading-text">Building terrain…</div>
     <div class="loading-bar"><div id="loading-fill"></div></div>
     <div class="loading-tip" id="loading-tip">Tip: Double-tap SPACE to fly</div>
+  </div>
+</div>
+
+<!-- ======================= Death screen ======================= -->
+<div id="death-screen" class="overlay hidden">
+  <div class="menu-stack">
+    <div class="death-title">You Died!</div>
+    <div id="death-message">Fell from a high place</div>
+    <button class="mc-button" id="btn-respawn">Respawn</button>
+    <button class="mc-button" id="btn-death-title">Title Screen</button>
   </div>
 </div>
 
@@ -106,7 +118,7 @@
       <span>Jump / Swim up</span><span>SPACE</span>
       <span>Sneak (edge-safe)</span><span>SHIFT</span>
       <span>Sprint</span><span>CTRL or double-tap W</span>
-      <span>Fly (toggle)</span><span>Double-tap SPACE</span>
+      <span>Fly (Creative only)</span><span>Double-tap SPACE</span>
       <span>Fly up / down</span><span>SPACE / SHIFT</span>
       <span>Break block</span><span>Hold LEFT CLICK</span>
       <span>Place block</span><span>RIGHT CLICK</span>
@@ -116,7 +128,7 @@
       <span>Debug info</span><span>F3</span>
       <span>Pause</span><span>ESC</span>
     </div>
-    <div class="controls-note">Creative-style: blocks are infinite. TNT explodes when broken!</div>
+    <div class="controls-note">Survival adds health, Minecraft-style fall damage and death. Blocks remain infinite.</div>
     <button class="mc-button" id="btn-controls-done">Done</button>
   </div>
 </div>
