@@ -684,6 +684,25 @@ export function buildWaterCanvas() {
   return canvas;
 }
 
+export function buildLavaCanvas() {
+  const S = 32;
+  const px = new Px(S, S);
+  const rng = mulberry32(hashString('lava-anim'));
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const a = Math.sin((x * 2 + y * 1) * Math.PI * 2 / S);
+      const b = Math.sin((x * 1 - y * 3) * Math.PI * 2 / S + 1.7);
+      const s = a + b;
+      const c = s > 0.9 ? [255, 200, 30] : s < -1.0 ? [210, 40, 10] : [240, 100, 20];
+      px.set(x, y, mul(c, lum(rng, 0.04)));
+    }
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = S;
+  canvas.getContext('2d').putImageData(new ImageData(px.d, S, S), 0, 0);
+  return canvas;
+}
+
 export function buildSunCanvas() {
   const S = 32;
   const px = new Px(S, S);

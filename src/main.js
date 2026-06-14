@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import {
-  buildAtlasCanvas, buildCrackCanvases, buildWaterCanvas, tileIconCanvas,
+  buildAtlasCanvas, buildCrackCanvases, buildWaterCanvas, buildLavaCanvas, tileIconCanvas,
 } from './textures.js';
 import { B, BLOCKS, PALETTE, DEFAULT_HOTBAR } from './blocks.js';
 import { CHUNK, WORLD_H, BIOME_NAMES } from './worldgen.js';
@@ -156,13 +156,21 @@ class Game {
     waterTex.colorSpace = THREE.SRGBColorSpace;
     this.waterTex = waterTex;
 
+    const lavaTex = new THREE.CanvasTexture(buildLavaCanvas());
+    lavaTex.magFilter = THREE.NearestFilter;
+    lavaTex.minFilter = THREE.NearestFilter;
+    lavaTex.generateMipmaps = false;
+    lavaTex.wrapS = lavaTex.wrapT = THREE.RepeatWrapping;
+    lavaTex.colorSpace = THREE.SRGBColorSpace;
+    this.lavaTex = lavaTex;
+
     this.materials = {
       solid: this.makeWorldMaterial({ map: atlasTex, alphaTest: 0.5 }),
       water: this.makeWorldMaterial({
         map: waterTex, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide,
       }),
       lava: this.makeWorldMaterial({
-        map: atlasTex, alphaTest: 0.5,
+        map: lavaTex, alphaTest: 0.5,
       }),
     };
 
@@ -1874,7 +1882,7 @@ class Game {
     this.itemEntities.update(dt, p, (stack) => this.tryPickupItem(stack));
     this.mobs.update(dt, p, {
       night: this.sky.dayLight < 0.34,
-      spawning: this.gameMode === 'survival',
+      spawning: true,
       gameMode: this.gameMode,
     });
     if (this.state !== 'playing') return;
@@ -1920,7 +1928,7 @@ class Game {
       eye.y + bobY + (Math.random() - 0.5) * sh,
       eye.z + (Math.random() - 0.5) * sh,
     );
-    this.camera.rotation.set(p.pitch, p.yaw, bobRoll);
+    this.camera.rotation.set(p.pitch, p.yaw, bobRoll);
 
     // smooth FOV (sprint kick)
     const targetFov = this.settings.fov * (p.sprinting ? (p.flying ? 1.18 : 1.12) : 1);
@@ -1931,11 +1939,14 @@ class Game {
     }
 
     // ---- environment ----
-    this.sky.setUnderwater(p.headInWater || p.headInLava);
-    this.ui.setUnderwater(p.headInWater || p.headInLava);
+    const liquidType = p.headInWater ? 'water' : (p.headInLava ? 'lava' : null);
+    this.sky.setUnderwater(liquidType);
+    this.ui.setUnderwater(liquidType);
     this.sky.update(dt, this.camera.position);
     this.waterTex.offset.x = (t_now() * 0.018) % 1;
     this.waterTex.offset.y = (t_now() * 0.011) % 1;
+    this.lavaTex.offset.x = (t_now() * 0.008) % 1;
+    this.lavaTex.offset.y = (t_now() * 0.005) % 1;
 
     this.updateHand(dt);
 

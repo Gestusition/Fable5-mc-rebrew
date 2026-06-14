@@ -134,10 +134,14 @@ export class Sky {
     this.fogColor.lerp(SUNSET, sunsetF * 0.18);
 
     const fog = this.scene.fog;
-    if (this.underwater) {
+    if (this.underwater === 'water') {
       this.fogColor.setRGB(0.05, 0.18, 0.45).multiplyScalar(Math.max(0.25, this.dayLight));
       fog.near = 2;
       fog.far = 18;
+    } else if (this.underwater === 'lava') {
+      this.fogColor.setRGB(0.85, 0.25, 0.05);
+      fog.near = 1;
+      fog.far = 5;
     } else {
       fog.near = this.viewDistance * 0.55;
       fog.far = this.viewDistance * 0.98;

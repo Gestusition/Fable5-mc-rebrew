@@ -311,13 +311,24 @@ export class UI {
   setPickerSelected(selected) {
     this.pickerSlotEls?.forEach((el, i) => el.classList.toggle('selected', i === selected));
   }
+    this.pickerSlotEls?.forEach((el, i) => el.classList.toggle('selected', i === selected));
+  }
 
   // ----------------------------------------------------------
   // Misc HUD
   // ----------------------------------------------------------
 
-  setUnderwater(on) {
-    this.$('underwater-overlay').style.opacity = on ? '1' : '0';
+  setUnderwater(type) {
+    const el = this.$('underwater-overlay');
+    if (type === 'water') {
+      el.style.backgroundColor = 'rgba(20, 60, 160, 0.4)';
+      el.style.opacity = '1';
+    } else if (type === 'lava') {
+      el.style.backgroundColor = 'rgba(220, 80, 0, 0.7)';
+      el.style.opacity = '1';
+    } else {
+      el.style.opacity = '0';
+    }
   }
 
   // ----------------------------------------------------------

@@ -279,7 +279,7 @@ export function buildChunkGeometries(world, chunk, { smoothLighting = true } = {
 
             // ---- uv ----
             if (isLiquid) {
-              // world-tiled animated water texture (repeat-wrapped)
+              // world-tiled animated water/lava texture (repeat-wrapped)
               if (face.key === 'py' || face.key === 'ny') {
                 v.u = (ox + v.x) / 4; v.v = (oz + v.z) / 4;
               } else {
