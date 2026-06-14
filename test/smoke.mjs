@@ -27,7 +27,7 @@ import { createHunger, eatFood, tickHunger } from '../src/hunger.js';
 import { createSmelter, smeltRecipeFor, tickSmelter } from '../src/smelting.js';
 import { BlockEntities } from '../src/blockEntities.js';
 import { MobSystem, raySphereDistance, standHeight } from '../src/mobs.js';
-import { VillageSystem, findVillageSite } from '../src/villages.js';
+import { VillageSystem, getRegionVillageSite } from '../src/villages.js';
 
 const fakeScene = { add() {}, remove() {} };
 const fakeMaterials = { solid: {}, water: {} };
@@ -558,10 +558,9 @@ ok('villagers wait safely when their saved chunk is unloaded', () => {
 ok('village sites and structures are deterministic and include residents', () => {
   const seed = hashString('village-test');
   const villageGen = new WorldGen(seed);
-  const villageSpawn = villageGen.findSpawn();
   assert.deepStrictEqual(
-    findVillageSite(villageGen, villageSpawn, seed),
-    findVillageSite(villageGen, villageSpawn, seed),
+    getRegionVillageSite(villageGen, 0, 0, seed),
+    getRegionVillageSite(villageGen, 0, 0, seed),
   );
   const edits = new Map();
   const fakeWorld = {
@@ -570,14 +569,20 @@ ok('village sites and structures are deterministic and include residents', () =>
     getBlock(x, y, z) { return edits.get(`${x},${y},${z}`) ?? B.AIR; },
     setBlock(x, y, z, id) { edits.set(`${x},${y},${z}`, id); return B.AIR; },
   };
-  const villages = new VillageSystem(seed, villageSpawn);
-  for (let i = 0; i < 40 && !villages.generated; i++) villages.update(fakeWorld, 512);
-  assert.strictEqual(villages.generated, true);
+  const villages = new VillageSystem(seed);
+  let generated = false;
+  for (let i = 0; i < 40 && !generated; i++) {
+    villages.update(fakeWorld, { x: 0, y: 0, z: 0 }, 512);
+    // Determine if region 0,0 village is generated
+    const v = villages.getVillage(fakeWorld, 0, 0);
+    generated = v && v.generated;
+  }
+  assert.strictEqual(generated, true);
   assert.ok([...edits.values()].includes(B.CRAFTING_TABLE));
   assert.ok([...edits.values()].includes(B.FURNACE));
-  const residents = villages.takeResidentSpawns();
+  const residents = villages.takeResidentSpawns({ x: 0, y: 0, z: 0 });
   assert.strictEqual(residents.length, 4);
-  assert.deepStrictEqual(villages.takeResidentSpawns(), []);
+  assert.deepStrictEqual(villages.takeResidentSpawns({ x: 0, y: 0, z: 0 }), []);
 });
 
 console.log('— block geometry —');

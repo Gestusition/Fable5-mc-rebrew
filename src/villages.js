@@ -62,7 +62,7 @@ function siteScore(gen, x, z) {
 
 const REGION_SIZE = 256;
 
-function getRegionVillageSite(gen, rx, rz, seed) {
+export function getRegionVillageSite(gen, rx, rz, seed) {
   const rSeed = hash2(rx, rz, seed);
   const px = (rSeed % 192) + 32;
   const pz = (hash2(rSeed, 1, seed) % 192) + 32;
