@@ -41,7 +41,8 @@ import { MobSystem } from './mobs.js';
 import { VillageSystem } from './villages.js';
 
 const SETTINGS_KEY = 'mcjs:settings';
-const WORLD_KEY = 'mcjs:world';
+const WORLDS_LIST_KEY = 'mcjs:worlds';
+const OLD_WORLD_KEY = 'mcjs:world';
 const REACH = 5;
 const SPRINT_DOUBLE_TAP_MS = 350;
 
@@ -70,12 +71,36 @@ class Game {
   constructor() {
     this.canvas = document.getElementById('game');
     this.settings = { ...DEFAULT_SETTINGS, ...(loadJSON(SETTINGS_KEY) || {}) };
-    this.saveData = loadJSON(WORLD_KEY);
+    
+    this.worldsList = loadJSON(WORLDS_LIST_KEY) || [];
+    // Migration for older saves
+    if (this.worldsList.length === 0) {
+      const oldSave = loadJSON(OLD_WORLD_KEY);
+      if (oldSave) {
+        const id = Date.now().toString();
+        this.worldsList.push({
+          id,
+          name: 'My World',
+          seed: oldSave.seed,
+          gameMode: oldSave.gameMode || 'survival',
+          lastPlayed: Date.now()
+        });
+        saveJSON(WORLDS_LIST_KEY, this.worldsList);
+        saveJSON(`mcjs:world:${id}`, oldSave);
+      }
+    }
+    
+    this.saveData = null;
+    this.currentWorldId = null;
+    
+    // Pass worlds list to UI
+    this.ui.setWorldsList(this.worldsList);
 
     // ---------- UI ----------
     this.ui = new UI({
-      onPlay: () => this.play(),
-      onNewWorld: (seedStr) => this.newWorld(seedStr),
+      onPlay: (worldId) => this.play(worldId),
+      onDeleteWorld: (worldId) => this.deleteWorld(worldId),
+      onNewWorld: (name, seedStr) => this.newWorld(name, seedStr),
       onResume: () => this.resume(),
       onQuit: () => this.quitToTitle(),
       onSetting: (k, v) => this.applySetting(k, v),
@@ -208,33 +233,20 @@ class Game {
     this.dipT = 1;
 
     // ---------- inventory state ----------
-    this.gameMode = this.saveData?.mode === 'creative' ? 'creative' : 'survival';
-    this.inventory = this.saveData?.inventory
-      ? loadInventory(this.saveData.inventory)
-      : loadInventory(null, this.saveData?.hotbar, this.saveData?.hotbarCounts);
-    if (this.gameMode === 'creative' && !this.saveData?.inventory && !this.saveData?.hotbar) {
-      this.inventory = creativeInventory();
-    }
-    this.craftingGrid = Array.from({ length: 4 }, (_, i) =>
-      this.saveData?.crafting?.[i] ? loadInventory([this.saveData.crafting[i]], null, null)[0] : emptySlot());
-    this.tableCraftingGrid = Array.from({ length: 9 }, (_, i) =>
-      this.saveData?.tableCrafting?.[i]
-        ? loadInventory([this.saveData.tableCrafting[i]], null, null)[0]
-        : emptySlot());
-    this.inventoryCursor = this.saveData?.cursor
-      ? loadInventory([this.saveData.cursor], null, null)[0]
-      : emptySlot();
-    this.blockEntities = new BlockEntities(this.saveData?.blockEntities);
-    this.legacySmelter = this.saveData?.smelter || null;
+    this.gameMode = 'survival';
+    this.inventory = emptyInventory();
+    this.craftingGrid = Array.from({ length: 4 }, emptySlot);
+    this.tableCraftingGrid = Array.from({ length: 9 }, emptySlot);
+    this.inventoryCursor = emptySlot();
+    this.blockEntities = new BlockEntities();
+    this.legacySmelter = null;
     this.containerMode = 'inventory';
     this.activeBlock = null;
     this.activeVillager = null;
     this.selected = 0;
     this.maxHealth = 20;
     this.health = this.maxHealth;
-    this.hungerState = createHunger(this.saveData?.hunger);
-    if (Number.isInteger(this.saveData?.slot)) this.selected = this.saveData.slot;
-    this.selected = Math.max(0, Math.min(HOTBAR_SIZE - 1, this.selected));
+    this.hungerState = createHunger();
 
     // ---------- icons ----------
     this.icons = this.makeIcons();
@@ -266,11 +278,6 @@ class Game {
     this.fpsFrames = 0;
     this.lastDrawInfo = { calls: 0, triangles: 0 };
 
-    const seed = this.saveData?.seed ?? ((Math.random() * 0xffffffff) >>> 0);
-    this.createWorld(seed, this.saveData?.edits, this.saveData?.player, this.saveData?.droppedItems);
-    this.ui.setSeedPlaceholder(this.worldSeed);
-
-    this.bindInput();
     this.lastT = performance.now();
     this._rafPending = false;
     this.scheduleFrame();
@@ -344,7 +351,7 @@ class Game {
     this.spawn = this.saveData?.spawn
       ? { x: this.saveData.spawn.x, y: this.saveData.spawn.y, z: this.saveData.spawn.z }
       : this.world.gen.findSpawn();
-    this.village = new VillageSystem(this.worldSeed, this.spawn, this.saveData?.village);
+    this.village = new VillageSystem(this.worldSeed, this.saveData?.village);
     this.pendingSavedMobs = this.saveData?.mobs || null;
     this.usedSavedPos = false;
     this.spawnLandingProtected = !savedPlayer;
@@ -361,7 +368,6 @@ class Game {
       this.player.teleport(this.spawn.x, this.spawn.y + 1, this.spawn.z);
     }
     this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
-    this.hungerState = createHunger(this.gameMode === 'survival' ? this.saveData?.hunger : {});
     this.ui.updateHunger(this.hungerState.hunger, MAX_HUNGER, this.gameMode === 'survival');
     this.sky.setTimeOfDay(this.saveData?.time ?? 0.1); // fresh worlds start mid-morning
   }
@@ -376,17 +382,62 @@ class Game {
   // State machine
   // ============================================================
 
-  play() {
+  play(worldId) {
+    if (!worldId) return;
     this.audio.ensure();
     this.ui.hideAllMenus();
     this.ui.show('loading');
     this.state = 'loading';
     this.lockPointer();
+    
+    // Load world data
+    this.currentWorldId = worldId;
+    this.saveData = loadJSON(`mcjs:world:${worldId}`) || {};
+    const worldMeta = this.worldsList.find(w => w.id === worldId);
+    if (worldMeta) {
+      this.gameMode = worldMeta.gameMode || 'survival';
+      worldMeta.lastPlayed = Date.now();
+      this.worldsList.sort((a, b) => b.lastPlayed - a.lastPlayed);
+      saveJSON(WORLDS_LIST_KEY, this.worldsList);
+      this.ui.setWorldsList(this.worldsList);
+      this.ui.setGameMode(this.gameMode);
+      
+      this.inventory = this.saveData.inventory || (this.gameMode === 'survival' ? emptyInventory() : creativeInventory());
+      this.craftingGrid = this.saveData.craftingGrid || Array.from({ length: 4 }, emptySlot);
+      this.tableCraftingGrid = this.saveData.tableCraftingGrid || Array.from({ length: 9 }, emptySlot);
+      this.inventoryCursor = this.saveData.inventoryCursor || emptySlot();
+      this.blockEntities = new BlockEntities(this.saveData.blockEntities);
+      this.legacySmelter = this.saveData.smelter || null;
+      this.hungerState = createHunger(this.saveData.hunger);
+      this.selected = this.saveData.selected || 0;
+      this.refreshHotbar();
+      this.createWorld(worldMeta.seed, this.saveData.edits, this.saveData.player, this.saveData.droppedItems);
+    }
   }
 
-  newWorld(seedStr) {
+  deleteWorld(worldId) {
+    if (!worldId) return;
+    this.worldsList = this.worldsList.filter(w => w.id !== worldId);
+    saveJSON(WORLDS_LIST_KEY, this.worldsList);
+    localStorage.removeItem(`mcjs:world:${worldId}`);
+    this.ui.setWorldsList(this.worldsList);
+  }
+
+  newWorld(name, seedStr) {
     const seed = this.parseSeed(seedStr);
-    localStorage.removeItem(WORLD_KEY);
+    
+    // Create new world metadata
+    this.currentWorldId = Date.now().toString();
+    this.worldsList.unshift({
+      id: this.currentWorldId,
+      name: name,
+      seed: seed,
+      gameMode: this.gameMode,
+      lastPlayed: Date.now()
+    });
+    saveJSON(WORLDS_LIST_KEY, this.worldsList);
+    this.ui.setWorldsList(this.worldsList);
+    
     this.saveData = null;
     this.inventory = this.gameMode === 'survival' ? emptyInventory() : creativeInventory();
     this.craftingGrid = Array.from({ length: 4 }, emptySlot);
@@ -399,7 +450,7 @@ class Game {
     this.refreshHotbar();
     this.createWorld(seed, null, null);
     this.ui.setSeedPlaceholder(this.worldSeed);
-    this.play();
+    this.play(this.currentWorldId);
   }
 
   toggleGameMode() {
@@ -488,7 +539,7 @@ class Game {
   }
 
   quitToTitle() {
-    this.saveWorld();
+    this.save();
     this.state = 'title';
     this.pickerOpen = false;
     this.ui.hideAllMenus();
@@ -543,30 +594,34 @@ class Game {
   // ============================================================
 
   saveWorld() {
-    if (!this.world || !this.player) return;
+    if (!this.world || !this.currentWorldId) return;
     this.saveData = {
       seed: this.worldSeed,
-      edits: this.world.serializeEdits(),
+      gameMode: this.gameMode,
+      time: this.sky.timeOfDay,
       player: {
-        x: this.player.pos.x, y: this.player.pos.y, z: this.player.pos.z,
-        yaw: this.player.yaw, pitch: this.player.pitch, flying: this.player.flying,
+        x: this.player.pos.x,
+        y: this.player.pos.y,
+        z: this.player.pos.z,
+        yaw: this.player.yaw,
+        pitch: this.player.pitch,
         health: this.health,
+        flying: this.player.flying,
       },
+      spawn: this.spawn,
       hunger: this.hungerState,
-      mode: this.gameMode,
+      edits: this.world.serializeEdits(),
       inventory: this.inventory,
-      crafting: this.craftingGrid,
-      tableCrafting: this.tableCraftingGrid,
-      cursor: this.inventoryCursor,
+      selected: this.selected,
+      craftingGrid: this.craftingGrid,
+      tableCraftingGrid: this.tableCraftingGrid,
+      inventoryCursor: this.inventoryCursor,
       blockEntities: this.blockEntities.serialize(),
       droppedItems: this.itemEntities.serialize(),
-      village: this.village?.serialize(),
       mobs: this.mobs.serialize(),
-      slot: this.selected,
-      time: this.sky.timeOfDay,
-      spawn: this.spawn,
+      village: this.village?.serialize(),
     };
-    saveJSON(WORLD_KEY, this.saveData);
+    saveJSON(`mcjs:world:${this.currentWorldId}`, this.saveData);
   }
 
   applySetting(key, value) {
@@ -1756,14 +1811,17 @@ class Game {
     }
     if (this.state !== 'playing') return;
 
+
     // ---- interaction & world streaming ----
     if (this.locked && !this.pickerOpen) this.updateInteraction(dt);
     else { this.outline.visible = false; this.crack.visible = false; }
 
     this.world.update(p.pos.x, p.pos.z, 5);
-    this.village?.update(this.world);
-    const residentSpawns = this.village?.takeResidentSpawns() || [];
-    if (residentSpawns.length) this.mobs.spawnResidents(residentSpawns);
+    if (this.village.update(this.world, this.player.pos, 256)) {
+      this.world.remeshAll();
+    }
+    const spawns = this.village.takeResidentSpawns(this.player.pos);
+    if (spawns.length) this.mobs.spawnResidents(spawns);
     this.processSupportChecks();
     this.entities.update(dt);
     this.itemEntities.update(dt, p, (stack) => this.tryPickupItem(stack));

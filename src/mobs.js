@@ -177,39 +177,36 @@ export class MobSystem {
       this.part(group, 0.22, 0.55, 0.22, def.color, -0.18, 0.28, 0.15);
       this.part(group, 0.22, 0.55, 0.22, def.color, 0.18, 0.28, 0.15);
     } else if (type === 'villager') {
-      // robe body
-      this.part(group, 0.62, 0.85, 0.32, 0x74472e, 0, 1.0, 0);
-      // robe skirt (wider)
-      this.part(group, 0.7, 0.55, 0.42, 0x69402b, 0, 0.45, 0);
-      // head
-      this.part(group, 0.52, 0.52, 0.52, def.color, 0, 1.68, 0);
-      // big nose
-      this.part(group, 0.16, 0.22, 0.26, 0xb57952, 0, 1.60, -0.38);
-      // eyes
-      this.part(group, 0.10, 0.08, 0.02, 0x222222, -0.14, 1.74, -0.27);
-      this.part(group, 0.10, 0.08, 0.02, 0x222222, 0.14, 1.74, -0.27);
-      // eyebrows
-      this.part(group, 0.12, 0.04, 0.02, 0x553322, -0.14, 1.80, -0.27);
-      this.part(group, 0.12, 0.04, 0.02, 0x553322, 0.14, 1.80, -0.27);
-      // arms (crossed in front)
-      this.part(group, 0.52, 0.18, 0.22, 0x69402b, 0, 1.08, -0.22);
-    } else if (type === 'zombie_villager') {
-      // zombie body with villager robe remnants
-      this.part(group, 0.55, 0.85, 0.32, 0x4a6a35, 0, 1.0, 0);
-      this.part(group, 0.65, 0.45, 0.38, 0x3d5530, 0, 0.45, 0);
-      // zombie green head
-      this.part(group, 0.52, 0.52, 0.52, 0x5d8f4f, 0, 1.68, 0);
-      // villager nose (decayed)
-      this.part(group, 0.14, 0.18, 0.22, 0x6a8a4a, 0, 1.60, -0.36);
-      // glowing eyes
-      this.part(group, 0.10, 0.08, 0.02, 0x44ff44, -0.14, 1.74, -0.27);
-      this.part(group, 0.10, 0.08, 0.02, 0x44ff44, 0.14, 1.74, -0.27);
-      // outstretched arms
-      this.part(group, 0.2, 0.8, 0.2, 0x4a6a35, -0.42, 1.0, 0);
-      this.part(group, 0.2, 0.8, 0.2, 0x4a6a35, 0.42, 1.0, 0);
       // legs
-      this.part(group, 0.22, 0.8, 0.22, 0x3d5530, -0.18, 0.4, 0);
-      this.part(group, 0.22, 0.8, 0.22, 0x3d5530, 0.18, 0.4, 0);
+      this.part(group, 0.5, 0.75, 0.25, 0x69402b, 0, 0.375, 0);
+      // body
+      this.part(group, 0.5, 0.75, 0.375, 0x74472e, 0, 1.125, 0);
+      // arms crossed in front
+      this.part(group, 0.65, 0.25, 0.35, 0x69402b, 0, 1.25, -0.2);
+      // head
+      this.part(group, 0.5, 0.625, 0.5, def.color, 0, 1.8125, 0);
+      // big nose
+      this.part(group, 0.125, 0.25, 0.125, 0xb57952, 0, 1.625, -0.3125);
+      // eyes
+      this.part(group, 0.08, 0.08, 0.02, 0x222222, -0.14, 1.85, -0.26);
+      this.part(group, 0.08, 0.08, 0.02, 0x222222, 0.14, 1.85, -0.26);
+      // unibrow
+      this.part(group, 0.3, 0.06, 0.02, 0x553322, 0, 1.95, -0.26);
+    } else if (type === 'zombie_villager') {
+      // legs
+      this.part(group, 0.5, 0.75, 0.25, 0x3d5530, 0, 0.375, 0);
+      // body
+      this.part(group, 0.5, 0.75, 0.375, 0x4a6a35, 0, 1.125, 0);
+      // zombie green head
+      this.part(group, 0.5, 0.625, 0.5, 0x5d8f4f, 0, 1.8125, 0);
+      // villager nose (decayed)
+      this.part(group, 0.125, 0.25, 0.125, 0x6a8a4a, 0, 1.625, -0.3125);
+      // glowing eyes
+      this.part(group, 0.08, 0.08, 0.02, 0x44ff44, -0.14, 1.85, -0.26);
+      this.part(group, 0.08, 0.08, 0.02, 0x44ff44, 0.14, 1.85, -0.26);
+      // outstretched arms (offset forward)
+      this.part(group, 0.25, 0.75, 0.25, 0x4a6a35, -0.375, 1.125, -0.3);
+      this.part(group, 0.25, 0.75, 0.25, 0x4a6a35, 0.375, 1.125, -0.3);
     } else {
       // skeleton, zombie - humanoid
       const bodyColor = type === 'skeleton' ? 0xb8b6ad : def.color;
@@ -486,6 +483,19 @@ export class MobSystem {
       const dy = player.pos.y - mob.pos.y;
       const dz = player.pos.z - mob.pos.z;
       const distance = Math.hypot(dx, dy, dz);
+
+      if (mob.type === 'skeleton' || mob.type === 'zombie' || mob.type === 'zombie_villager') {
+        if (!night && this.world.sky && this.world.sky.dayLight > 0.8) {
+          const bx = Math.floor(mob.pos.x);
+          const by = Math.floor(mob.pos.y);
+          const bz = Math.floor(mob.pos.z);
+          if (this.world.getBlock(bx, by, bz) !== B.WATER && this.world.surfaceHeight(bx, bz) <= by) {
+            if (Math.random() < dt * 0.75) {
+              this.damage(mob, 1);
+            }
+          }
+        }
+      }
 
       if (mob.kind === 'villager' && !this.world.isLoaded(mob.pos.x, mob.pos.z)) {
         mob.mesh.visible = false;

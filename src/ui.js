@@ -68,14 +68,27 @@ export class UI {
   show(name) { this.screens[name].classList.remove('hidden'); }
   hide(name) { this.screens[name].classList.add('hidden'); }
   hideAllMenus() {
+  }
+
+  // ----------------------------------------------------------
+  // Screens
+  // ----------------------------------------------------------
+
+  show(name) { this.screens[name].classList.remove('hidden'); }
+  hide(name) { this.screens[name].classList.add('hidden'); }
+  hideAllMenus() {
     for (const k of ['title', 'loading', 'pause', 'options', 'controls', 'picker', 'inventory', 'death']) this.hide(k);
   }
 
   _wireMenus() {
     const click = (id, fn) => this.$(id).addEventListener('click', () => { this.h.onUiClick?.(); fn(); });
 
-    click('btn-play', () => this.h.onPlay());
-    click('btn-new-world', () => this.h.onNewWorld(this.$('seed-input').value.trim()));
+    click('btn-play', () => this.h.onPlay(this.$('world-select').value));
+    click('btn-delete-world', () => this.h.onDeleteWorld(this.$('world-select').value));
+    click('btn-new-world', () => this.h.onNewWorld(
+      this.$('world-name-input').value.trim() || 'New World',
+      this.$('seed-input').value.trim()
+    ));
     click('btn-game-mode', () => this.h.onToggleMode());
     click('btn-title-controls', () => { this.controlsReturn = 'title'; this.hide('title'); this.show('controls'); });
 
@@ -129,7 +142,33 @@ export class UI {
   }
 
   setSeedPlaceholder(seed) {
-    this.$('seed-input').placeholder = `Seed (current: ${seed})`;
+    this.$('seed-input').placeholder = `Seed (leave empty = random)`;
+  }
+
+  setWorldsList(worlds) {
+    const select = this.$('world-select');
+    select.innerHTML = '';
+    if (!worlds || worlds.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No worlds found';
+      select.appendChild(opt);
+      this.$('btn-play').disabled = true;
+      this.$('btn-delete-world').disabled = true;
+    } else {
+      worlds.forEach(w => {
+        const opt = document.createElement('option');
+        opt.value = w.id;
+        // Format last played date
+        const date = w.lastPlayed ? new Date(w.lastPlayed).toLocaleString() : 'Unknown';
+        opt.textContent = `${w.name} - ${w.gameMode === 'survival' ? 'Survival' : 'Creative'} (${date})`;
+        select.appendChild(opt);
+      });
+      this.$('btn-play').disabled = false;
+      this.$('btn-delete-world').disabled = false;
+      // Sort by lastPlayed in main.js, so first is latest
+      select.value = worlds[0].id;
+    }
   }
 
   setGameMode(mode) {

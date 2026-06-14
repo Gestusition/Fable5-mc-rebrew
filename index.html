@@ -85,6 +85,7 @@
     <div id="picker-hotbar" class="picker-hotbar"></div>
   </div>
 </div>
+</div>
 
 <!-- ======================= Title screen ======================= -->
 <div id="title-screen" class="overlay">
@@ -93,13 +94,22 @@
     <div class="mc-sublogo">TEST</div>
     <div class="splash" id="splash-text">Now in JavaScript!</div>
     <div class="menu-buttons">
-      <button class="mc-button" id="btn-play">Play World</button>
-      <button class="mc-button" id="btn-game-mode">Game Mode: Survival</button>
+      <select id="world-select" class="mc-button" style="text-align: left; padding: 0 12px;"></select>
       <div class="seed-row">
-        <input id="seed-input" type="text" placeholder="Seed (leave empty = random)" spellcheck="false" />
-        <button class="mc-button small" id="btn-new-world">Create New World</button>
+        <button class="mc-button" id="btn-play" style="flex: 2;">Play Selected</button>
+        <button class="mc-button" id="btn-delete-world" style="flex: 1; background: #900;">Delete</button>
       </div>
-      <button class="mc-button" id="btn-title-controls">Controls</button>
+      <div class="seed-row" style="margin-top: 16px;">
+        <input id="world-name-input" type="text" placeholder="New World Name" spellcheck="false" style="flex: 1;" />
+      </div>
+      <div class="seed-row">
+        <input id="seed-input" type="text" placeholder="Seed (empty = random)" spellcheck="false" style="flex: 1;" />
+      </div>
+      <div class="seed-row">
+        <button class="mc-button" id="btn-game-mode" style="flex: 2;">Game Mode: Survival</button>
+        <button class="mc-button" id="btn-new-world" style="flex: 1;">Create</button>
+      </div>
+      <button class="mc-button" id="btn-title-controls" style="margin-top: 16px;">Controls</button>
     </div>
     <div class="title-footer">
       <span>Three.js Voxel Engine</span>

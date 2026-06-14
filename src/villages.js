@@ -60,24 +60,25 @@ function siteScore(gen, x, z) {
   };
 }
 
-export function findVillageSite(gen, spawn, seed) {
-  const sx = Math.floor(spawn.x);
-  const sz = Math.floor(spawn.z);
-  let best = null;
-  for (const radius of [20, 28, 36, 44]) {
-    for (let i = 0; i < 16; i++) {
-      const offset = (hash2(seed, radius, 0x51a9) / 4294967296) * Math.PI * 2;
-      const angle = offset + (i / 16) * Math.PI * 2;
-      const x = Math.round((sx + Math.cos(angle) * radius) / 4) * 4;
-      const z = Math.round((sz + Math.sin(angle) * radius) / 4) * 4;
-      const candidate = siteScore(gen, x, z);
-      if (candidate && (!best || candidate.score < best.score)) best = candidate;
-    }
-    if (best && best.score <= 12) break;
+const REGION_SIZE = 256;
+
+function getRegionVillageSite(gen, rx, rz, seed) {
+  const rSeed = hash2(rx, rz, seed);
+  const px = (rSeed % 192) + 32;
+  const pz = (hash2(rSeed, 1, seed) % 192) + 32;
+  const cx = rx * REGION_SIZE + px;
+  const cz = rz * REGION_SIZE + pz;
+  
+  const x = Math.round(cx / 4) * 4;
+  const z = Math.round(cz / 4) * 4;
+  
+  const candidate = siteScore(gen, x, z);
+  if (candidate && candidate.score <= 15) return candidate;
+  if (rx === 0 && rz === 0) {
+    const fallback = gen.columnInfo(x, z);
+    return { x, z, y: fallback.h, score: 99 };
   }
-  if (best) return best;
-  const fallback = gen.columnInfo(sx + 20, sz);
-  return { x: sx + 20, z: sz, y: fallback.h, score: 99 };
+  return null;
 }
 
 function buildVillagePlan(site) {
@@ -138,14 +139,11 @@ function buildVillagePlan(site) {
     }
     set(x0 + 1, base + 1, z0 + 1, B.CRAFTING_TABLE);
     set(x1 - 1, base + 1, z1 - 1, B.FURNACE);
-    // Add a bed inside the house (2 blocks long)
     set(x0 + 1, base + 1, z1 - 1, B.BED);
-    set(x0 + 1, base + 1, z1 - 2, B.BED);
-    const outsideZ = door === 'south' ? z1 + 1 : z0 - 1;
-    set(doorX - 1, base + 1, outsideZ, B.TORCH);
+    set(x0 + 1, base + 2, z1 - 1, B.BED); // top half
   };
 
-  houses.forEach(buildHouse);
+  for (const h of houses) buildHouse(h);
 
   flatten(cx - 3, cz - 3, cx + 3, cz + 3, B.COBBLE);
   for (let z = cz - 2; z <= cz + 2; z++) {
@@ -163,23 +161,31 @@ function buildVillagePlan(site) {
 }
 
 export class VillageSystem {
-  constructor(seed, spawn, saved = null) {
+  constructor(seed, saved = null) {
     this.seed = seed >>> 0;
-    this.spawn = spawn;
-    this.site = saved?.site || null;
-    this.generated = !!saved?.generated;
-    this.residentsSpawned = !!saved?.residentsSpawned;
-    this.plan = null;
-    this.planIndex = 0;
+    this.villages = saved?.villages || {};
   }
 
-  ensureSite(world) {
-    if (!this.site) this.site = findVillageSite(world.gen, this.spawn, this.seed);
-    return this.site;
+  getVillage(world, rx, rz) {
+    const key = `${rx},${rz}`;
+    if (!this.villages[key]) {
+      const site = getRegionVillageSite(world.gen, rx, rz, this.seed);
+      if (site) {
+        this.villages[key] = {
+          site,
+          generated: false,
+          residentsSpawned: false,
+          plan: null,
+          planIndex: 0
+        };
+      } else {
+        this.villages[key] = { site: null };
+      }
+    }
+    return this.villages[key];
   }
 
-  areaLoaded(world) {
-    const site = this.ensureSite(world);
+  areaLoaded(world, site) {
     for (const dz of [-20, 0, 20]) {
       for (const dx of [-20, 0, 20]) {
         if (!world.isLoaded(site.x + dx, site.z + dz)) return false;
@@ -188,45 +194,63 @@ export class VillageSystem {
     return true;
   }
 
-  update(world, budget = 256) {
-    if (this.generated || !this.areaLoaded(world)) return false;
-    if (!this.plan) this.plan = buildVillagePlan(this.site);
+  update(world, playerPos, budget = 256) {
+    const prx = Math.floor(playerPos.x / REGION_SIZE);
+    const prz = Math.floor(playerPos.z / REGION_SIZE);
+    
     let changed = false;
-    for (let count = 0; count < budget && this.planIndex < this.plan.length; count++) {
-      const op = this.plan[this.planIndex++];
-      if (world.getBlock(op.x, op.y, op.z) !== op.id) {
-        world.setBlock(op.x, op.y, op.z, op.id, { silent: true });
-        changed = true;
+    for (let drx = -1; drx <= 1; drx++) {
+      for (let drz = -1; drz <= 1; drz++) {
+        const v = this.getVillage(world, prx + drx, prz + drz);
+        if (v && v.site && !v.generated && this.areaLoaded(world, v.site)) {
+          if (!v.plan) v.plan = buildVillagePlan(v.site);
+          for (let count = 0; count < budget && v.planIndex < v.plan.length; count++) {
+            const op = v.plan[v.planIndex++];
+            if (world.getBlock(op.x, op.y, op.z) !== op.id) {
+              world.setBlock(op.x, op.y, op.z, op.id, { silent: true });
+              changed = true;
+            }
+          }
+          if (v.planIndex >= v.plan.length) {
+            v.generated = true;
+            v.plan = null;
+          }
+        }
       }
-    }
-    if (this.planIndex >= this.plan.length) {
-      this.generated = true;
-      this.plan = null;
     }
     return changed;
   }
 
-  takeResidentSpawns() {
-    if (!this.generated || this.residentsSpawned) return [];
-    this.residentsSpawned = true;
-    const { x, y, z } = this.site;
-    const professions = Object.keys(VILLAGER_PROFESSIONS);
-    return professions.map((profession, index) => ({
-      type: 'villager',
-      x: x + (index % 2 ? 9 : -9) + 0.5,
-      y: y + 1,
-      z: z + (index < 2 ? -9 : 10) + 0.5,
-      home: { x, y: y + 1, z },
-      name: NAMES[hash2(this.seed, index, 0x71aa) % NAMES.length],
-      profession,
-    }));
+  takeResidentSpawns(playerPos) {
+    const prx = Math.floor(playerPos.x / REGION_SIZE);
+    const prz = Math.floor(playerPos.z / REGION_SIZE);
+    
+    let spawns = [];
+    for (let drx = -1; drx <= 1; drx++) {
+      for (let drz = -1; drz <= 1; drz++) {
+        const key = `${prx + drx},${prz + drz}`;
+        const v = this.villages[key];
+        if (v && v.site && v.generated && !v.residentsSpawned) {
+          v.residentsSpawned = true;
+          const { x, y, z } = v.site;
+          const professions = Object.keys(VILLAGER_PROFESSIONS);
+          const vs = professions.map((profession, index) => ({
+            type: 'villager',
+            x: x + (index % 2 ? 9 : -9) + 0.5,
+            y: y + 1,
+            z: z + (index < 2 ? -9 : 10) + 0.5,
+            home: { x, y: y + 1, z },
+            name: NAMES[hash2(this.seed, index + (prx + drx) * 37 + (prz + drz) * 13, 0x71aa) % NAMES.length],
+            profession,
+          }));
+          spawns.push(...vs);
+        }
+      }
+    }
+    return spawns;
   }
 
   serialize() {
-    return {
-      site: this.site,
-      generated: this.generated,
-      residentsSpawned: this.residentsSpawned,
-    };
+    return { villages: this.villages };
   }
 }
