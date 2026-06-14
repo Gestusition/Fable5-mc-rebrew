@@ -92,9 +92,6 @@ class Game {
     
     this.saveData = null;
     this.currentWorldId = null;
-    
-    // Pass worlds list to UI
-    this.ui.setWorldsList(this.worldsList);
 
     // ---------- UI ----------
     this.ui = new UI({
@@ -117,6 +114,9 @@ class Game {
       onDeathQuit: () => this.quitAfterDeath(),
       onUiClick: () => { this.audio.ensure(); this.audio.click(); },
     });
+
+    // Pass worlds list to UI
+    this.ui.setWorldsList(this.worldsList);
 
     // ---------- renderer ----------
     try {
@@ -278,6 +278,12 @@ class Game {
     this.fpsFrames = 0;
     this.lastDrawInfo = { calls: 0, triangles: 0 };
 
+    const seed = (Math.random() * 0xffffffff) >>> 0;
+    this.createWorld(seed, null, null, null);
+    this.ui.setSeedPlaceholder(this.worldSeed);
+
+    this.bindInput();
+    
     this.lastT = performance.now();
     this._rafPending = false;
     this.scheduleFrame();
