@@ -59,7 +59,8 @@ export class Entities {
   // ----------------------------------------------------------
 
   igniteTNT(x, y, z, fuse = 1.5) {
-    this.world.setBlock(x, y, z, B.AIR, { silent: true });
+    const removed = this.world.setBlock(x, y, z, B.AIR, { silent: true });
+    if (removed !== B.TNT) return false;
     const mesh = this.makeMesh(B.TNT);
     mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
     const flash = new THREE.Mesh(this.geometryFor(B.TNT), this.flashMat);
@@ -68,6 +69,7 @@ export class Entities {
     mesh.add(flash);
     this.list.push({ type: 'tnt', mesh, flash, fuse, age: 0 });
     if (this.audio) this.audio.fuse();
+    return true;
   }
 
   explode(cx, cy, cz, radius = 4.4) {

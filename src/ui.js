@@ -5,6 +5,8 @@
 // ============================================================
 
 import { BLOCKS, PALETTE } from './blocks.js';
+import { itemDef, itemForBlock } from './items.js';
+import { HOTBAR_SIZE } from './inventory.js';
 
 const SPLASHES = [
   'Now in JavaScript!',
@@ -43,6 +45,7 @@ export class UI {
       options: this.$('options-menu'),
       controls: this.$('controls-menu'),
       picker: this.$('picker'),
+      inventory: this.$('survival-inventory'),
       death: this.$('death-screen'),
       hud: this.$('hud'),
     };
@@ -55,6 +58,7 @@ export class UI {
 
     this._wireMenus();
     this._buildHotbar();
+    this._buildSurvivalInventory();
   }
 
   // ----------------------------------------------------------
@@ -64,7 +68,7 @@ export class UI {
   show(name) { this.screens[name].classList.remove('hidden'); }
   hide(name) { this.screens[name].classList.add('hidden'); }
   hideAllMenus() {
-    for (const k of ['title', 'loading', 'pause', 'options', 'controls', 'picker', 'death']) this.hide(k);
+    for (const k of ['title', 'loading', 'pause', 'options', 'controls', 'picker', 'inventory', 'death']) this.hide(k);
   }
 
   _wireMenus() {
@@ -153,9 +157,13 @@ export class UI {
       img.draggable = false;
       const count = document.createElement('span');
       count.className = 'slot-count';
+      const durability = document.createElement('span');
+      durability.className = 'durability-bar';
+      durability.appendChild(document.createElement('span'));
       slot.appendChild(num);
       slot.appendChild(img);
       slot.appendChild(count);
+      slot.appendChild(durability);
       bar.appendChild(slot);
       this.slotEls.push(slot);
     }
@@ -166,8 +174,9 @@ export class UI {
     this._buildPicker();
   }
 
-  updateHotbar(hotbar, selected, counts = [], showCounts = false) {
-    hotbar.forEach((id, i) => {
+  updateHotbar(hotbar, selected, showCounts = false) {
+    hotbar.forEach((slot, i) => {
+      const id = slot?.id || null;
       const img = this.slotEls[i].querySelector('img');
       const url = this.iconUrls.get(id);
       if (url) {
@@ -178,11 +187,13 @@ export class UI {
         img.style.visibility = 'hidden';
       }
       const count = this.slotEls[i].querySelector('.slot-count');
-      count.textContent = showCounts && counts[i] > 1 ? String(counts[i]) : '';
+      count.textContent = showCounts && slot?.count > 1 ? String(slot.count) : '';
+      this._renderDurability(this.slotEls[i], slot);
       this.slotEls[i].classList.toggle('selected', i === selected);
     });
     if (this.pickerSlotEls) {
-      hotbar.forEach((id, i) => {
+      hotbar.forEach((slot, i) => {
+        const id = slot?.id || null;
         const img = this.pickerSlotEls[i].querySelector('img');
         const url = this.iconUrls.get(id);
         if (url) {
@@ -217,7 +228,7 @@ export class UI {
       cell.dataset.name = BLOCKS[id].name;
       const img = document.createElement('img');
       img.draggable = false;
-      const url = this.iconUrls.get(id);
+      const url = this.iconUrls.get(itemForBlock(id)) || this.iconUrls.get(id);
       if (url) img.src = url;
       cell.appendChild(img);
       cell.addEventListener('click', () => this.h.onPickBlock(id));
@@ -258,6 +269,158 @@ export class UI {
     this.$('underwater-overlay').style.opacity = on ? '1' : '0';
   }
 
+  // ----------------------------------------------------------
+  // Survival inventory
+  // ----------------------------------------------------------
+
+  _makeItemSlot(className = 'inventory-slot') {
+    const cell = document.createElement('div');
+    cell.className = className;
+    const img = document.createElement('img');
+    img.draggable = false;
+    const count = document.createElement('span');
+    count.className = 'slot-count';
+    const durability = document.createElement('span');
+    durability.className = 'durability-bar';
+    durability.appendChild(document.createElement('span'));
+    cell.append(img, count, durability);
+    return cell;
+  }
+
+  _wireItemSlot(cell, callback) {
+    cell.addEventListener('mousedown', (event) => {
+      if (event.button !== 0 && event.button !== 2) return;
+      event.preventDefault();
+      callback({
+        button: event.button === 2 ? 'right' : 'left',
+        shift: event.shiftKey,
+      });
+    });
+    cell.addEventListener('contextmenu', (event) => event.preventDefault());
+  }
+
+  _buildSurvivalInventory() {
+    this.inventorySlotEls = [];
+    const main = this.$('survival-main-grid');
+    const hotbar = this.$('survival-hotbar-grid');
+    for (let i = HOTBAR_SIZE; i < 36; i++) {
+      const cell = this._makeItemSlot();
+      this._wireItemSlot(cell, (action) => this.h.onInventorySlot(i, action));
+      main.appendChild(cell);
+      this.inventorySlotEls[i] = cell;
+    }
+    for (let i = 0; i < HOTBAR_SIZE; i++) {
+      const cell = this._makeItemSlot();
+      this._wireItemSlot(cell, (action) => this.h.onInventorySlot(i, action));
+      hotbar.appendChild(cell);
+      this.inventorySlotEls[i] = cell;
+    }
+
+    this.craftSlotEls = [];
+    const craft = this.$('craft-grid');
+    for (let i = 0; i < 9; i++) {
+      const cell = this._makeItemSlot();
+      this._wireItemSlot(cell, (action) => this.h.onCraftSlot(i, action));
+      craft.appendChild(cell);
+      this.craftSlotEls.push(cell);
+    }
+    this.craftOutputEl = this._makeItemSlot('inventory-slot output-slot');
+    this._wireItemSlot(this.craftOutputEl, (action) => this.h.onCraftOutput(action));
+    this.$('craft-output').appendChild(this.craftOutputEl);
+
+    this.smeltInputEl = this._makeItemSlot();
+    this.smeltFuelEl = this._makeItemSlot();
+    this.smeltOutputEl = this._makeItemSlot('inventory-slot output-slot');
+    this._wireItemSlot(this.smeltInputEl, (action) => this.h.onSmeltSlot('input', action));
+    this._wireItemSlot(this.smeltFuelEl, (action) => this.h.onSmeltSlot('fuel', action));
+    this._wireItemSlot(this.smeltOutputEl, (action) => this.h.onSmeltSlot('output', action));
+    this.$('smelt-input').appendChild(this.smeltInputEl);
+    this.$('smelt-fuel').appendChild(this.smeltFuelEl);
+    this.$('smelt-output').appendChild(this.smeltOutputEl);
+  }
+
+  setSurvivalMode(mode, villager = null, trades = []) {
+    const crafting = mode === 'inventory' || mode === 'crafting';
+    this.$('survival-menu-title').textContent = mode === 'crafting'
+      ? 'Crafting Table'
+      : mode === 'furnace'
+        ? 'Furnace'
+        : mode === 'trade'
+          ? 'Trading'
+          : 'Survival Inventory';
+    this.$('craft-panel').classList.toggle('hidden', !crafting);
+    this.$('furnace-panel').classList.toggle('hidden', mode !== 'furnace');
+    this.$('trade-panel').classList.toggle('hidden', mode !== 'trade');
+    this.$('craft-label').textContent = mode === 'crafting' ? 'Crafting 3x3' : 'Crafting 2x2';
+    this.$('craft-grid').classList.toggle('craft-grid-3', mode === 'crafting');
+    this.craftSlotEls.forEach((slot, index) => {
+      slot.classList.toggle('hidden', index >= (mode === 'crafting' ? 9 : 4));
+    });
+    if (mode === 'trade') {
+      this.$('villager-name').textContent = villager?.name || 'Settler';
+      this.$('villager-profession').textContent = villager?.profession || 'Provisioner';
+      const list = this.$('trade-list');
+      list.innerHTML = '';
+      trades.forEach((trade, index) => {
+        const button = document.createElement('button');
+        button.className = 'trade-button';
+        button.textContent = trade.label;
+        button.addEventListener('click', () => this.h.onTrade?.(index));
+        list.appendChild(button);
+      });
+    }
+  }
+
+  _renderItemSlot(el, slot) {
+    const id = slot?.id || null;
+    const def = itemDef(id);
+    const img = el.querySelector('img');
+    const count = el.querySelector('.slot-count');
+    const url = this.iconUrls.get(id);
+    if (url) {
+      if (img.src !== url) img.src = url;
+      img.style.visibility = 'visible';
+    } else {
+      img.removeAttribute('src');
+      img.style.visibility = 'hidden';
+    }
+    count.textContent = slot?.count > 1 ? String(slot.count) : '';
+    this._renderDurability(el, slot);
+    const durability = def?.tool
+      ? ` (${slot?.durability ?? def.tool.maxDurability}/${def.tool.maxDurability})`
+      : '';
+    if (def) el.dataset.name = `${def.name}${durability}`;
+    else delete el.dataset.name;
+  }
+
+  _renderDurability(el, slot) {
+    const bar = el.querySelector('.durability-bar');
+    if (!bar) return;
+    const tool = itemDef(slot?.id)?.tool;
+    bar.classList.toggle('visible', !!tool);
+    if (!tool) return;
+    const durability = Math.max(0, Math.min(tool.maxDurability, slot.durability ?? tool.maxDurability));
+    const ratio = durability / tool.maxDurability;
+    const fill = bar.firstElementChild;
+    fill.style.width = `${ratio * 100}%`;
+    fill.style.backgroundColor = ratio > 0.5 ? '#5bd34e' : ratio > 0.2 ? '#e0b33e' : '#d34b3f';
+  }
+
+  updateSurvivalInventory(inventory, crafting, output, cursor, smelter) {
+    for (let i = 0; i < this.inventorySlotEls.length; i++) {
+      if (this.inventorySlotEls[i]) this._renderItemSlot(this.inventorySlotEls[i], inventory[i]);
+    }
+    this.craftSlotEls.forEach((el, i) => this._renderItemSlot(el, crafting?.[i]));
+    this._renderItemSlot(this.craftOutputEl, output);
+    this._renderItemSlot(this.smeltInputEl, smelter?.input);
+    this._renderItemSlot(this.smeltFuelEl, smelter?.fuel);
+    this._renderItemSlot(this.smeltOutputEl, smelter?.output);
+    this.$('smelt-progress-fill').style.width = `${Math.min(100, ((smelter?.progress || 0) / 5) * 100)}%`;
+    this.$('inventory-cursor').textContent = cursor?.id
+      ? `Held: ${itemDef(cursor.id)?.name || cursor.id}${cursor.count > 1 ? ` x${cursor.count}` : ''}`
+      : 'Held: Empty';
+  }
+
   updateHealth(health, maxHealth, visible) {
     const bar = this.$('health');
     bar.classList.toggle('hidden', !visible);
@@ -278,6 +441,30 @@ export class UI {
     }
     this.heartEls.forEach((fill, i) => {
       const points = Math.max(0, Math.min(2, health - i * 2));
+      fill.style.width = `${points * 50}%`;
+    });
+  }
+
+  updateHunger(hunger, maxHunger, visible) {
+    const bar = this.$('hunger');
+    bar.classList.toggle('hidden', !visible);
+    if (!visible) return;
+    if (!this.hungerEls) {
+      this.hungerEls = [];
+      for (let i = 0; i < maxHunger / 2; i++) {
+        const pip = document.createElement('span');
+        pip.className = 'hunger-pip';
+        const fill = document.createElement('span');
+        fill.className = 'hunger-fill';
+        fill.textContent = '◆';
+        pip.textContent = '◆';
+        pip.appendChild(fill);
+        bar.appendChild(pip);
+        this.hungerEls.push(fill);
+      }
+    }
+    this.hungerEls.forEach((fill, i) => {
+      const points = Math.max(0, Math.min(2, hunger - i * 2));
       fill.style.width = `${points * 50}%`;
     });
   }

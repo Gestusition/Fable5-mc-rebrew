@@ -19,11 +19,26 @@ import { Sky } from './sky.js';
 import { Particles } from './particles.js';
 import { AudioFX } from './audio.js';
 import { Entities } from './entities.js';
+import { ItemEntities } from './itemEntities.js';
 import { UI } from './ui.js';
 import { hashString } from './noise.js';
 import {
-  HOTBAR_SIZE, addToHotbar, consumeHotbarSlot, emptyCounts, emptyHotbar,
+  HOTBAR_SIZE, addStack, capacityForItem, clickSlot, consumeSlot, countItem, emptyInventory,
+  emptySlot, loadInventory, removeItem, transferSlot,
 } from './inventory.js';
+import {
+  I, ITEMS, blockForItem, canHarvestBlock, damageTool, isToolEffective, itemDef,
+  itemForBlock, miningSpeedFor,
+} from './items.js';
+import { getBlockDrops } from './drops.js';
+import { craftOutput, takeCraftOutput, takeCraftOutputToInventory } from './crafting.js';
+import {
+  MAX_HUNGER, addExhaustion, createHunger, eatFood, tickHunger,
+} from './hunger.js';
+import { createSmelter, isFuelItem, smeltRecipeFor } from './smelting.js';
+import { BlockEntities } from './blockEntities.js';
+import { MobSystem } from './mobs.js';
+import { VillageSystem } from './villages.js';
 
 const SETTINGS_KEY = 'mcjs:settings';
 const WORLD_KEY = 'mcjs:world';
@@ -42,6 +57,15 @@ const saveJSON = (k, v) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* quota */ }
 };
 
+function creativeInventory() {
+  const inventory = emptyInventory();
+  DEFAULT_HOTBAR.forEach((blockId, i) => {
+    const id = itemForBlock(blockId);
+    if (id) inventory[i] = { id, count: 1 };
+  });
+  return inventory;
+}
+
 class Game {
   constructor() {
     this.canvas = document.getElementById('game');
@@ -58,6 +82,11 @@ class Game {
       getSettings: () => this.settings,
       onPickBlock: (id) => this.assignBlock(id),
       onHotbarSelect: (i) => { this.selectSlot(i); },
+      onInventorySlot: (i, action) => this.clickInventorySlot(i, action),
+      onCraftSlot: (i, action) => this.clickCraftSlot(i, action),
+      onCraftOutput: (action) => this.clickCraftOutput(action),
+      onSmeltSlot: (slot, action) => this.clickSmeltSlot(slot, action),
+      onTrade: (index) => this.performTrade(index),
       onToggleMode: () => this.toggleGameMode(),
       onRespawn: () => this.respawn(),
       onDeathQuit: () => this.quitAfterDeath(),
@@ -148,8 +177,22 @@ class Game {
     this.entities.onExplosion = (x, y, z) => {
       this.shakeT = Math.max(this.shakeT, 0.45);
       const d = this.player.pos.distanceTo(new THREE.Vector3(x, y, z));
-      if (d < 7) this.ui.flashDamage();
+      if (d < 7) {
+        this.ui.flashDamage();
+        this.damage(Math.max(1, Math.ceil((7 - d) * 2.2)), 'Caught in an explosion');
+      }
     };
+    this.itemEntities = new ItemEntities({
+      scene: this.scene,
+      world: null,
+      blockMaterial: this.materials.solid,
+    });
+    this.mobs = new MobSystem({ scene: this.scene });
+    this.mobs.onPlayerDamage = (amount, message) => this.damage(amount, message);
+    this.mobs.onDrop = (x, y, z, id, count) => {
+      this.itemEntities.spawn(x, y, z, id, count);
+    };
+    this.mobs.onExplode = (x, y, z, radius) => this.entities.explode(x, y, z, radius);
 
     // ---------- held block (separate pass over the world) ----------
     this.handScene = new THREE.Scene();
@@ -163,22 +206,32 @@ class Game {
 
     // ---------- inventory state ----------
     this.gameMode = this.saveData?.mode === 'creative' ? 'creative' : 'survival';
-    this.hotbar = this.gameMode === 'survival'
-      ? emptyHotbar()
-      : [...DEFAULT_HOTBAR];
-    this.hotbarCounts = emptyCounts();
+    this.inventory = this.saveData?.inventory
+      ? loadInventory(this.saveData.inventory)
+      : loadInventory(null, this.saveData?.hotbar, this.saveData?.hotbarCounts);
+    if (this.gameMode === 'creative' && !this.saveData?.inventory && !this.saveData?.hotbar) {
+      this.inventory = creativeInventory();
+    }
+    this.craftingGrid = Array.from({ length: 4 }, (_, i) =>
+      this.saveData?.crafting?.[i] ? loadInventory([this.saveData.crafting[i]], null, null)[0] : emptySlot());
+    this.tableCraftingGrid = Array.from({ length: 9 }, (_, i) =>
+      this.saveData?.tableCrafting?.[i]
+        ? loadInventory([this.saveData.tableCrafting[i]], null, null)[0]
+        : emptySlot());
+    this.inventoryCursor = this.saveData?.cursor
+      ? loadInventory([this.saveData.cursor], null, null)[0]
+      : emptySlot();
+    this.blockEntities = new BlockEntities(this.saveData?.blockEntities);
+    this.legacySmelter = this.saveData?.smelter || null;
+    this.containerMode = 'inventory';
+    this.activeBlock = null;
+    this.activeVillager = null;
     this.selected = 0;
     this.maxHealth = 20;
     this.health = this.maxHealth;
-    if (this.saveData?.hotbar?.length === HOTBAR_SIZE) {
-      if (this.gameMode === 'creative' || this.saveData?.hotbarCounts?.length === HOTBAR_SIZE) {
-        this.hotbar = this.saveData.hotbar.slice();
-        this.hotbarCounts = this.saveData?.hotbarCounts?.length === HOTBAR_SIZE
-          ? this.saveData.hotbarCounts.slice()
-          : emptyCounts();
-      }
-    }
+    this.hungerState = createHunger(this.saveData?.hunger);
     if (Number.isInteger(this.saveData?.slot)) this.selected = this.saveData.slot;
+    this.selected = Math.max(0, Math.min(HOTBAR_SIZE - 1, this.selected));
 
     // ---------- icons ----------
     this.icons = this.makeIcons();
@@ -199,6 +252,7 @@ class Game {
     this.miningProgress = 0;
     this.placeTimer = 0;
     this.rmbHeld = false;
+    this.mobAttackCooldown = 0;
     this.shakeT = 0;
     this.debugVisible = false;
     this.debugTimer = 0;
@@ -210,7 +264,7 @@ class Game {
     this.lastDrawInfo = { calls: 0, triangles: 0 };
 
     const seed = this.saveData?.seed ?? ((Math.random() * 0xffffffff) >>> 0);
-    this.createWorld(seed, this.saveData?.edits, this.saveData?.player);
+    this.createWorld(seed, this.saveData?.edits, this.saveData?.player, this.saveData?.droppedItems);
     this.ui.setSeedPlaceholder(this.worldSeed);
 
     this.bindInput();
@@ -262,10 +316,12 @@ class Game {
   // World / player lifecycle
   // ============================================================
 
-  createWorld(seed, edits, savedPlayer) {
+  createWorld(seed, edits, savedPlayer, droppedItems = null) {
     if (this.world) {
       this.world.dispose();
       this.entities.clear();
+      this.itemEntities.clear();
+      this.mobs.clear();
     }
     this.worldSeed = seed >>> 0;
     this.world = new World({
@@ -277,9 +333,14 @@ class Game {
     });
     if (edits) this.world.loadEdits(edits);
     this.entities.setWorld(this.world);
+    this.itemEntities.setWorld(this.world);
+    this.itemEntities.load(droppedItems);
+    this.mobs.setWorld(this.world);
 
     this.player = new Player(this.world);
     this.spawn = this.world.gen.findSpawn();
+    this.village = new VillageSystem(this.worldSeed, this.spawn, this.saveData?.village);
+    this.pendingSavedMobs = this.saveData?.mobs || null;
     this.usedSavedPos = false;
     this.spawnLandingProtected = !savedPlayer;
     this.health = this.gameMode === 'survival' && savedPlayer?.health > 0
@@ -295,6 +356,8 @@ class Game {
       this.player.teleport(this.spawn.x, this.spawn.y + 1, this.spawn.z);
     }
     this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
+    this.hungerState = createHunger(this.gameMode === 'survival' ? this.saveData?.hunger : {});
+    this.ui.updateHunger(this.hungerState.hunger, MAX_HUNGER, this.gameMode === 'survival');
     this.sky.setTimeOfDay(this.saveData?.time ?? 0.1); // fresh worlds start mid-morning
   }
 
@@ -320,10 +383,13 @@ class Game {
     const seed = this.parseSeed(seedStr);
     localStorage.removeItem(WORLD_KEY);
     this.saveData = null;
-    this.hotbar = this.gameMode === 'survival'
-      ? emptyHotbar()
-      : [...DEFAULT_HOTBAR];
-    this.hotbarCounts = emptyCounts();
+    this.inventory = this.gameMode === 'survival' ? emptyInventory() : creativeInventory();
+    this.craftingGrid = Array.from({ length: 4 }, emptySlot);
+    this.tableCraftingGrid = Array.from({ length: 9 }, emptySlot);
+    this.inventoryCursor = emptySlot();
+    this.blockEntities = new BlockEntities();
+    this.legacySmelter = null;
+    this.hungerState = createHunger();
     this.selected = 0;
     this.refreshHotbar();
     this.createWorld(seed, null, null);
@@ -336,14 +402,20 @@ class Game {
     if (this.gameMode === 'survival') {
       this.player.flying = false;
       this.health = this.maxHealth;
-      this.hotbar = emptyHotbar();
+      this.inventory = emptyInventory();
+      this.hungerState = createHunger();
     } else {
-      this.hotbar = [...DEFAULT_HOTBAR];
+      this.inventory = creativeInventory();
     }
-    this.hotbarCounts = emptyCounts();
+    this.craftingGrid = Array.from({ length: 4 }, emptySlot);
+    this.tableCraftingGrid = Array.from({ length: 9 }, emptySlot);
+    this.inventoryCursor = emptySlot();
+    this.blockEntities = new BlockEntities();
+    this.legacySmelter = null;
     this.selected = 0;
     this.ui.setGameMode(this.gameMode);
     this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
+    this.ui.updateHunger(this.hungerState.hunger, MAX_HUNGER, this.gameMode === 'survival');
     this.refreshHotbar();
   }
 
@@ -356,11 +428,43 @@ class Game {
       this.player.teleport(bx + 0.5, y + 1, bz + 0.5);
       this.spawnLandingProtected = true;
     }
+    this.recoverLegacySmelter();
+    if (this.pendingSavedMobs) {
+      this.mobs.load(this.pendingSavedMobs);
+      this.pendingSavedMobs = null;
+    }
     this.state = 'playing';
     this.ui.hideAllMenus();
     this.ui.show('hud');
     this.refreshHotbar();
     this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
+    this.ui.updateHunger(this.hungerState.hunger, MAX_HUNGER, this.gameMode === 'survival');
+  }
+
+  recoverLegacySmelter() {
+    if (!this.legacySmelter || this.gameMode !== 'survival') {
+      this.legacySmelter = null;
+      return;
+    }
+    const legacy = createSmelter(this.legacySmelter);
+    for (const slot of [legacy.input, legacy.fuel, legacy.output]) {
+      if (!slot.id || slot.count <= 0) continue;
+      const result = addStack(this.inventory, slot, this.selected);
+      if (result.remaining > 0) {
+        this.itemEntities.spawn(
+          this.player.pos.x,
+          this.player.pos.y + 1,
+          this.player.pos.z,
+          slot.id,
+          result.remaining,
+          null,
+          slot,
+        );
+      }
+    }
+    this.legacySmelter = null;
+    this.refreshHotbar();
+    this.ui.showToast('Old smelter contents moved to inventory');
   }
 
   pause() {
@@ -397,6 +501,7 @@ class Game {
   }
 
   die(message) {
+    if (this.pickerOpen) this.closePicker(false);
     this.state = 'dead';
     this.mining = false;
     this.rmbHeld = false;
@@ -409,10 +514,12 @@ class Game {
 
   respawn() {
     this.health = this.maxHealth;
+    this.hungerState = createHunger();
     this.usedSavedPos = false;
     this.spawnLandingProtected = true;
     this.player.teleport(this.spawn.x, this.spawn.y + 2, this.spawn.z);
     this.ui.updateHealth(this.health, this.maxHealth, true);
+    this.ui.updateHunger(this.hungerState.hunger, MAX_HUNGER, true);
     this.ui.hideAllMenus();
     this.ui.show('loading');
     this.state = 'loading';
@@ -421,6 +528,7 @@ class Game {
 
   quitAfterDeath() {
     this.health = this.maxHealth;
+    this.hungerState = createHunger();
     this.player.teleport(this.spawn.x, this.spawn.y + 2, this.spawn.z);
     this.quitToTitle();
   }
@@ -439,9 +547,16 @@ class Game {
         yaw: this.player.yaw, pitch: this.player.pitch, flying: this.player.flying,
         health: this.health,
       },
+      hunger: this.hungerState,
       mode: this.gameMode,
-      hotbar: this.hotbar,
-      hotbarCounts: this.hotbarCounts,
+      inventory: this.inventory,
+      crafting: this.craftingGrid,
+      tableCrafting: this.tableCraftingGrid,
+      cursor: this.inventoryCursor,
+      blockEntities: this.blockEntities.serialize(),
+      droppedItems: this.itemEntities.serialize(),
+      village: this.village?.serialize(),
+      mobs: this.mobs.serialize(),
       slot: this.selected,
       time: this.sky.timeOfDay,
     };
@@ -474,9 +589,15 @@ class Game {
   lockPointer() {
     try {
       const p = this.canvas.requestPointerLock({ unadjustedMovement: true });
-      if (p && p.catch) p.catch(() => this.canvas.requestPointerLock());
+      if (p?.catch) {
+        p.catch(() => {
+          const fallback = this.canvas.requestPointerLock();
+          fallback?.catch?.(() => {});
+        });
+      }
     } catch {
-      this.canvas.requestPointerLock();
+      const fallback = this.canvas.requestPointerLock();
+      fallback?.catch?.(() => {});
     }
   }
 
@@ -582,6 +703,11 @@ class Game {
       if (this.state !== 'playing' || this.pickerOpen) return;
       if (!this.locked) { this.lockPointer(); return; }
       if (e.button === 0) {
+        const mob = this.currentMobTarget();
+        if (mob) {
+          this.attackMob(mob);
+          return;
+        }
         this.mining = true;
         this.miningProgress = 0;
         this.miningCell = null;
@@ -590,9 +716,8 @@ class Game {
         e.preventDefault();
         this.pickTargetBlock();
       } else if (e.button === 2) {
-        this.rmbHeld = true;
+        this.rmbHeld = this.useSelectedItem();
         this.placeTimer = 0.24;
-        this.placeBlock();
       }
     });
 
@@ -618,9 +743,8 @@ class Game {
 
   refreshHotbar() {
     this.ui.updateHotbar(
-      this.hotbar,
+      this.inventory.slice(0, HOTBAR_SIZE),
       this.selected,
-      this.hotbarCounts,
       this.gameMode === 'survival',
     );
   }
@@ -629,14 +753,21 @@ class Game {
     this.selected = i;
     this.refreshHotbar();
     this.ui.setPickerSelected(i);
-    if (this.hotbar[i] !== B.AIR) this.ui.showToast(BLOCKS[this.hotbar[i]].name);
+    const slot = this.inventory[i];
+    const def = itemDef(slot?.id);
+    if (def) {
+      const durability = def.tool ? ` (${slot.durability}/${def.tool.maxDurability})` : '';
+      this.ui.showToast(`${def.name}${durability}`);
+    }
     this.dipT = 0;
     this.audio.pop();
   }
 
   assignBlock(id) {
     if (this.gameMode !== 'creative') return;
-    this.hotbar[this.selected] = id;
+    const itemId = itemForBlock(id);
+    if (!itemId) return;
+    this.inventory[this.selected] = { id: itemId, count: 1 };
     this.refreshHotbar();
     this.ui.showToast(BLOCKS[id].name);
     this.audio.click();
@@ -644,22 +775,233 @@ class Game {
   }
 
   openPicker() {
-    if (this.gameMode !== 'creative') {
-      this.ui.showToast('Creative inventory is unavailable in Survival');
-      return;
+    if (this.gameMode === 'creative') {
+      this.pickerOpen = true;
+      this.mining = false;
+      this.rmbHeld = false;
+      this.ui.show('picker');
+      this.ui.setPickerSelected(this.selected);
+      document.exitPointerLock?.();
+    } else {
+      this.openSurvivalMenu('inventory');
     }
+  }
+
+  activeCraftGrid() {
+    return this.containerMode === 'crafting' ? this.tableCraftingGrid : this.craftingGrid;
+  }
+
+  activeCraftWidth() {
+    return this.containerMode === 'crafting' ? 3 : 2;
+  }
+
+  activeSmelter() {
+    if (this.containerMode !== 'furnace' || !this.activeBlock) return null;
+    if (this.world.getBlock(
+      this.activeBlock.x,
+      this.activeBlock.y,
+      this.activeBlock.z,
+    ) !== B.FURNACE) return null;
+    return this.blockEntities.getFurnace(
+      this.activeBlock.x,
+      this.activeBlock.y,
+      this.activeBlock.z,
+    );
+  }
+
+  openSurvivalMenu(mode, target = null, villager = null) {
+    if (this.gameMode !== 'survival') return;
     this.pickerOpen = true;
     this.mining = false;
     this.rmbHeld = false;
-    this.ui.show('picker');
-    this.ui.setPickerSelected(this.selected);
+    this.containerMode = mode;
+    this.activeBlock = target
+      ? { x: target.x, y: target.y, z: target.z }
+      : null;
+    this.activeVillager = villager;
+    this.ui.setSurvivalMode(mode, villager, villager?.trades || []);
+    this.refreshSurvivalInventory();
+    this.ui.show('inventory');
     document.exitPointerLock?.();
   }
 
   closePicker(relock) {
+    if (this.gameMode === 'survival') this.returnLooseInventoryItems();
     this.pickerOpen = false;
+    this.containerMode = 'inventory';
+    this.activeBlock = null;
+    this.activeVillager = null;
     this.ui.hide('picker');
+    this.ui.hide('inventory');
     if (relock) this.lockPointer();
+  }
+
+  refreshSurvivalInventory() {
+    if (this.gameMode !== 'survival') return;
+    const craftingGrid = this.activeCraftGrid();
+    const craftWidth = this.activeCraftWidth();
+    this.ui.setSurvivalMode(
+      this.containerMode,
+      this.activeVillager,
+      this.activeVillager?.trades || [],
+    );
+    this.ui.updateSurvivalInventory(
+      this.inventory,
+      craftingGrid,
+      craftOutput(craftingGrid, craftWidth),
+      this.inventoryCursor,
+      this.activeSmelter(),
+    );
+  }
+
+  clickInventorySlot(index, action = {}) {
+    if (this.gameMode !== 'survival') return;
+    let changed = false;
+    if (action.shift && !this.inventoryCursor.id) {
+      const targets = index < HOTBAR_SIZE
+        ? Array.from({ length: this.inventory.length - HOTBAR_SIZE }, (_, i) => i + HOTBAR_SIZE)
+        : Array.from({ length: HOTBAR_SIZE }, (_, i) => i);
+      changed = transferSlot(this.inventory, index, targets) > 0;
+    } else {
+      const before = JSON.stringify([this.inventory[index], this.inventoryCursor]);
+      this.inventoryCursor = clickSlot(
+        this.inventory,
+        index,
+        this.inventoryCursor,
+        action.button === 'right' ? 'right' : 'left',
+      );
+      changed = JSON.stringify([this.inventory[index], this.inventoryCursor]) !== before;
+    }
+    this.refreshHotbar();
+    this.refreshSurvivalInventory();
+    if (changed) this.audio.click();
+  }
+
+  clickCraftSlot(index, action = {}) {
+    if (this.gameMode !== 'survival') return;
+    const craftingGrid = this.activeCraftGrid();
+    if (index < 0 || index >= craftingGrid.length) return;
+    let changed = false;
+    if (action.shift && !this.inventoryCursor.id) {
+      const slot = craftingGrid[index];
+      const result = addStack(this.inventory, slot, this.selected);
+      if (result.added > 0) {
+        consumeSlot(craftingGrid, index, result.added);
+        changed = true;
+      }
+    } else {
+      const before = JSON.stringify([craftingGrid[index], this.inventoryCursor]);
+      this.inventoryCursor = clickSlot(
+        craftingGrid,
+        index,
+        this.inventoryCursor,
+        action.button === 'right' ? 'right' : 'left',
+      );
+      changed = JSON.stringify([craftingGrid[index], this.inventoryCursor]) !== before;
+    }
+    this.refreshHotbar();
+    this.refreshSurvivalInventory();
+    if (changed) this.audio.click();
+  }
+
+  clickCraftOutput(action = {}) {
+    if (this.gameMode !== 'survival') return;
+    const craftingGrid = this.activeCraftGrid();
+    const craftWidth = this.activeCraftWidth();
+    let crafted = false;
+    if (action.shift && !this.inventoryCursor.id) {
+      crafted = takeCraftOutputToInventory(
+        craftingGrid,
+        this.inventory,
+        this.selected,
+        craftWidth,
+      );
+      if (crafted) this.refreshHotbar();
+    } else {
+      const before = JSON.stringify(this.inventoryCursor);
+      this.inventoryCursor = takeCraftOutput(craftingGrid, this.inventoryCursor, craftWidth);
+      crafted = JSON.stringify(this.inventoryCursor) !== before;
+    }
+    if (crafted) this.audio.pop();
+    this.refreshSurvivalInventory();
+  }
+
+  clickSmeltSlot(name, action = {}) {
+    if (this.gameMode !== 'survival') return;
+    const smelter = this.activeSmelter();
+    if (!smelter) return;
+    if (name === 'output') {
+      const out = smelter.output;
+      if (!out.id) return;
+      if (action.shift && !this.inventoryCursor.id) {
+        const result = addStack(this.inventory, out, this.selected);
+        if (result.added <= 0) return;
+        smelter.output.count -= result.added;
+        if (smelter.output.count <= 0) smelter.output = emptySlot();
+        this.refreshHotbar();
+      } else {
+        const amount = action.button === 'right' ? 1 : out.count;
+        const max = itemDef(out.id)?.maxStack ?? 64;
+        if (this.inventoryCursor.id && this.inventoryCursor.id !== out.id) return;
+        if ((this.inventoryCursor.count || 0) + amount > max) return;
+        this.inventoryCursor = {
+          id: out.id,
+          count: (this.inventoryCursor.id ? this.inventoryCursor.count : 0) + amount,
+        };
+        smelter.output.count -= amount;
+        if (smelter.output.count <= 0) smelter.output = emptySlot();
+      }
+      this.audio.pop();
+    } else {
+      if (action.shift && !this.inventoryCursor.id) {
+        const result = addStack(this.inventory, smelter[name], this.selected);
+        if (result.added <= 0) return;
+        smelter[name].count -= result.added;
+        if (smelter[name].count <= 0) smelter[name] = emptySlot();
+        this.refreshHotbar();
+        this.refreshSurvivalInventory();
+        this.audio.click();
+        return;
+      }
+      const accepts = name === 'input' ? smeltRecipeFor : isFuelItem;
+      if (this.inventoryCursor.id && !accepts(this.inventoryCursor.id)) return;
+      const holder = [smelter[name]];
+      this.inventoryCursor = clickSlot(
+        holder,
+        0,
+        this.inventoryCursor,
+        action.button === 'right' ? 'right' : 'left',
+      );
+      smelter[name] = holder[0];
+      this.audio.click();
+    }
+    this.refreshSurvivalInventory();
+  }
+
+  returnLooseInventoryItems() {
+    const returnStack = (slot) => {
+      if (!slot?.id || slot.count <= 0) return emptySlot();
+      const result = addStack(this.inventory, slot, this.selected);
+      if (result.remaining > 0) {
+        this.itemEntities.spawn(
+          this.player.pos.x,
+          this.player.pos.y + 1,
+          this.player.pos.z,
+          slot.id,
+          result.remaining,
+          null,
+          slot,
+        );
+      }
+      return emptySlot();
+    };
+    this.inventoryCursor = returnStack(this.inventoryCursor);
+    if (this.containerMode === 'inventory') {
+      this.craftingGrid = this.craftingGrid.map(returnStack);
+    } else if (this.containerMode === 'crafting') {
+      this.tableCraftingGrid = this.tableCraftingGrid.map(returnStack);
+    }
+    this.refreshHotbar();
   }
 
   // ============================================================
@@ -670,6 +1012,44 @@ class Game {
     const eye = this.player.eyePosition(new THREE.Vector3());
     const dir = this.player.lookDir(new THREE.Vector3());
     return raycastVoxel(this.world, eye, dir, REACH);
+  }
+
+  currentMobTarget(predicate = null) {
+    const eye = this.player.eyePosition(new THREE.Vector3());
+    const dir = this.player.lookDir(new THREE.Vector3());
+    const block = raycastVoxel(this.world, eye, dir, REACH);
+    return this.mobs.raycast(
+      eye,
+      dir,
+      REACH,
+      block?.dist ?? Infinity,
+      predicate,
+    )?.mob || null;
+  }
+
+  attackMob(mob) {
+    if (this.mobAttackCooldown > 0) return;
+    const held = this.inventory[this.selected];
+    const tool = itemDef(held?.id)?.tool;
+    const damage = this.gameMode === 'creative'
+      ? 100
+      : tool
+        ? tool.tier + (tool.type === 'axe' ? 3 : tool.type === 'pickaxe' ? 2 : 1)
+        : 1;
+    if (!this.mobs.damage(mob, damage, this.player.pos)) return;
+    this.mobAttackCooldown = tool?.type === 'axe' ? 0.65 : 0.42;
+    this.swing();
+    if (this.gameMode === 'survival') {
+      addExhaustion(this.hungerState, 0.1);
+      if (tool) {
+        const result = damageTool(held, 1);
+        if (result.broken) {
+          this.inventory[this.selected] = emptySlot();
+          this.ui.showToast(`${itemDef(held.id)?.name || 'Tool'} broke`);
+        }
+        this.refreshHotbar();
+      }
+    }
   }
 
   swing() { this.swingT = 0; }
@@ -694,8 +1074,11 @@ class Game {
       }
       const def = BLOCKS[target.id];
       if (def.hardness !== Infinity) {
-        const speed = this.player.headInWater ? 0.35 : 1;
+        const heldItem = this.inventory[this.selected]?.id;
+        const toolSpeed = this.gameMode === 'survival' ? miningSpeedFor(heldItem, target.id) : 1;
+        const speed = (this.player.headInWater ? 0.35 : 1) * toolSpeed;
         this.miningProgress += dt * speed;
+        if (this.gameMode === 'survival') addExhaustion(this.hungerState, dt * 0.1);
         if (this.swingT > 0.7) this.swing(); // keep punching
         const frac = Math.min(1, this.miningProgress / def.hardness);
         const stage = Math.min(7, Math.floor(frac * 8));
@@ -737,17 +1120,115 @@ class Game {
       this.entities.igniteTNT(target.x, target.y, target.z);
       return;
     }
-    this.world.setBlock(target.x, target.y, target.z, B.AIR);
-    this.collectBlock(id);
-    this.particles.spawnBlockBreak(target.x, target.y, target.z, id);
-    this.audio.blockBreak(id);
+    const removedId = this.world.setBlock(target.x, target.y, target.z, B.AIR);
+    if (removedId === null) return;
+    const furnace = removedId === B.FURNACE
+      ? this.blockEntities.removeFurnace(target.x, target.y, target.z)
+      : null;
+    if (this.gameMode === 'survival') {
+      if (furnace) {
+        for (const slot of [furnace?.input, furnace?.fuel, furnace?.output]) {
+          if (!slot?.id || slot.count <= 0) continue;
+          this.itemEntities.spawn(
+            target.x + 0.5,
+            target.y + 0.65,
+            target.z + 0.5,
+            slot.id,
+            slot.count,
+            null,
+            slot,
+          );
+        }
+      }
+      const held = this.inventory[this.selected];
+      const heldItemId = held?.id || null;
+      for (const drop of getBlockDrops(removedId, heldItemId)) {
+        this.itemEntities.spawn(
+          target.x + 0.5,
+          target.y + 0.65,
+          target.z + 0.5,
+          drop.id,
+          drop.count,
+        );
+      }
+      if (isToolEffective(heldItemId, removedId) && canHarvestBlock(heldItemId, removedId)) {
+        const result = damageTool(held, 1);
+        if (result.broken) {
+          this.inventory[this.selected] = emptySlot();
+          this.ui.showToast(`${itemDef(heldItemId)?.name || 'Tool'} broke`);
+        }
+        if (result.damaged) {
+          this.refreshHotbar();
+          if (this.pickerOpen) this.refreshSurvivalInventory();
+        }
+      }
+    }
+    this.particles.spawnBlockBreak(target.x, target.y, target.z, removedId);
+    this.audio.blockBreak(removedId);
+  }
+
+  useSelectedItem() {
+    if (this.gameMode === 'survival') {
+      const villager = this.currentMobTarget((mob) => mob.type === 'villager');
+      if (villager) {
+        const view = this.mobs.villagerView(villager);
+        view.mob = villager;
+        this.openSurvivalMenu('trade', null, view);
+        return false;
+      }
+    }
+    const target = this.currentTarget();
+    const interaction = target ? BLOCKS[target.id]?.interaction : null;
+    if (this.gameMode === 'survival' && interaction) {
+      this.openSurvivalMenu(interaction, target);
+      return false;
+    }
+    const slot = this.inventory[this.selected];
+    const def = itemDef(slot?.id);
+    if (!def) return false;
+    if (this.gameMode === 'survival' && def.food) {
+      if (eatFood(this.hungerState, def.food)) {
+        consumeSlot(this.inventory, this.selected, 1);
+        this.refreshHotbar();
+        this.ui.updateHunger(this.hungerState.hunger, MAX_HUNGER, true);
+        this.ui.showToast(`Ate ${def.name}`);
+        this.audio.pop();
+      }
+      return false;
+    }
+    return def.blockId !== null ? this.placeBlock() : false;
+  }
+
+  performTrade(index) {
+    if (this.containerMode !== 'trade' || !this.activeVillager) return;
+    const trade = this.activeVillager.trades?.[index];
+    if (!trade) return;
+    if (countItem(this.inventory, trade.cost.id) < trade.cost.count) {
+      this.ui.showToast(`Need ${trade.cost.count} ${itemDef(trade.cost.id)?.name || 'items'}`);
+      return;
+    }
+    if (capacityForItem(this.inventory, trade.result.id) < trade.result.count) {
+      this.ui.showToast('Not enough inventory space');
+      return;
+    }
+    if (!removeItem(this.inventory, trade.cost.id, trade.cost.count)) return;
+    const result = addStack(this.inventory, trade.result, this.selected);
+    if (result.remaining > 0) {
+      addStack(this.inventory, trade.cost, this.selected);
+      return;
+    }
+    this.refreshHotbar();
+    this.refreshSurvivalInventory();
+    this.audio.pop();
+    this.ui.showToast(`Traded for ${itemDef(trade.result.id)?.name || 'item'}`);
   }
 
   placeBlock() {
     const target = this.currentTarget();
-    if (!target) return;
-    const id = this.hotbar[this.selected];
-    if (id === B.AIR || (this.gameMode === 'survival' && this.hotbarCounts[this.selected] <= 0)) return;
+    if (!target) return false;
+    const slot = this.inventory[this.selected];
+    const id = blockForItem(slot?.id);
+    if (id === null || (this.gameMode === 'survival' && slot.count <= 0)) return false;
     const def = BLOCKS[id];
     const targetDef = BLOCKS[target.id];
 
@@ -755,31 +1236,32 @@ class Game {
     if (targetDef.replaceable) {
       cx = target.x; cy = target.y; cz = target.z;
     } else {
-      if (target.nx === 0 && target.ny === 0 && target.nz === 0) return;
+      if (target.nx === 0 && target.ny === 0 && target.nz === 0) return false;
       cx = target.x + target.nx; cy = target.y + target.ny; cz = target.z + target.nz;
     }
-    if (cy < 1 || cy >= WORLD_H) return;
+    if (cy < 1 || cy >= WORLD_H) return false;
 
     const cellId = this.world.getBlock(cx, cy, cz);
     const cellDef = BLOCKS[cellId];
-    if (cellId !== B.AIR && !cellDef.replaceable) return;
-    if (def.solid && this.player.intersectsCell(cx, cy, cz)) return;
+    if (cellId !== B.AIR && !cellDef.replaceable) return false;
+    if (def.solid && this.player.intersectsCell(cx, cy, cz)) return false;
 
     // support rules
     const below = this.world.getBlock(cx, cy - 1, cz);
     if (def.support === 'floor') {
       if (id === B.TORCH) {
-        if (!BLOCKS[below].solid) return;
+        if (!BLOCKS[below].solid) return false;
       } else if (below !== B.GRASS && below !== B.DIRT && below !== B.SNOW_GRASS && below !== B.SAND) {
-        return; // plants need soil
+        return false; // plants need soil
       }
     }
-    if (def.support === 'sand' && below !== B.SAND && below !== B.CACTUS) return;
+    if (def.support === 'sand' && below !== B.SAND && below !== B.CACTUS) return false;
 
     this.world.setBlock(cx, cy, cz, id);
     this.consumeSelectedBlock();
     this.audio.blockPlace(id);
     this.swing();
+    return true;
   }
 
   pickTargetBlock() {
@@ -791,20 +1273,23 @@ class Game {
     }
   }
 
-  collectBlock(id) {
-    if (this.gameMode !== 'survival' || id === B.AIR || id === B.WATER) return;
-    const slot = addToHotbar(this.hotbar, this.hotbarCounts, id, this.selected);
-    if (slot < 0) {
-      this.ui.showToast('Inventory full');
-      return;
-    }
+  tryPickupItem(stackOrId, count) {
+    const stack = typeof stackOrId === 'string'
+      ? { id: stackOrId, count }
+      : stackOrId;
+    if (this.gameMode !== 'survival') return stack?.count || 0;
+    const result = addStack(this.inventory, stack, this.selected);
+    if (result.added <= 0) return result.remaining;
     this.refreshHotbar();
-    this.ui.showToast(`Picked up ${BLOCKS[id].name}`);
+    if (this.pickerOpen) this.refreshSurvivalInventory();
+    this.ui.showToast(`Picked up ${itemDef(stack.id)?.name || 'item'}`);
+    this.audio.pop();
+    return result.remaining;
   }
 
   consumeSelectedBlock() {
     if (this.gameMode !== 'survival') return;
-    consumeHotbarSlot(this.hotbar, this.hotbarCounts, this.selected);
+    consumeSlot(this.inventory, this.selected, 1);
     this.refreshHotbar();
   }
 
@@ -827,10 +1312,20 @@ class Game {
         this.entities.spawnFallingBlock(x, y, z, id);
       } else if (def.support === 'floor' && !belowSolid) {
         this.world.setBlock(x, y, z, B.AIR);
+        if (this.gameMode === 'survival') {
+          for (const drop of getBlockDrops(id)) {
+            this.itemEntities.spawn(x + 0.5, y + 0.5, z + 0.5, drop.id, drop.count);
+          }
+        }
         this.particles.spawnBlockBreak(x, y, z, id);
         this.audio.blockBreak(id);
       } else if (def.support === 'sand' && below !== B.SAND && below !== B.CACTUS) {
         this.world.setBlock(x, y, z, B.AIR);
+        if (this.gameMode === 'survival') {
+          for (const drop of getBlockDrops(id)) {
+            this.itemEntities.spawn(x + 0.5, y + 0.5, z + 0.5, drop.id, drop.count);
+          }
+        }
         this.particles.spawnBlockBreak(x, y, z, id);
         this.audio.blockBreak(id);
       }
@@ -848,21 +1343,36 @@ class Game {
   }
 
   updateHand(dt) {
-    const id = this.hotbar[this.selected];
-    if (id === B.AIR) {
+    const itemId = this.inventory[this.selected]?.id;
+    const item = itemDef(itemId);
+    if (!item) {
       if (this.heldMesh) {
         this.handGroup.remove(this.heldMesh);
+        if (this.heldMesh.material !== this.materials.solid) this.heldMesh.material.dispose();
         this.heldMesh = null;
       }
-      this.heldId = B.AIR;
+      this.heldId = null;
       return;
     }
-    if (!this.heldMesh || this.heldId !== id) {
-      if (this.heldMesh) this.handGroup.remove(this.heldMesh);
-      this.heldMesh = new THREE.Mesh(this.heldGeometry(id), this.materials.solid);
-      this.heldMesh.scale.setScalar(0.4);
+    if (!this.heldMesh || this.heldId !== itemId) {
+      if (this.heldMesh) {
+        this.handGroup.remove(this.heldMesh);
+        if (this.heldMesh.material !== this.materials.solid) this.heldMesh.material.dispose();
+      }
+      const blockId = blockForItem(itemId);
+      if (blockId !== null) {
+        this.heldMesh = new THREE.Mesh(this.heldGeometry(blockId), this.materials.solid);
+        this.heldMesh.scale.setScalar(0.4);
+      } else {
+        const geometry = item.tool
+          ? new THREE.BoxGeometry(0.14, 0.85, 0.14)
+          : new THREE.BoxGeometry(0.48, 0.16, 0.48);
+        const material = new THREE.MeshBasicMaterial({ color: item.icon.color || '#cccccc' });
+        this.heldMesh = new THREE.Mesh(geometry, material);
+        this.heldMesh.rotation.z = item.tool ? -0.55 : 0;
+      }
       this.handGroup.add(this.heldMesh);
-      this.heldId = id;
+      this.heldId = itemId;
     }
 
     this.swingT = Math.min(1, this.swingT + dt / 0.26);
@@ -904,13 +1414,17 @@ class Game {
     cnv.width = cnv.height = SIZE;
     const ctx = cnv.getContext('2d');
 
-    for (const id of PALETTE) {
-      const def = BLOCKS[id];
+    for (const blockId of PALETTE) {
+      const def = BLOCKS[blockId];
+      const itemId = itemForBlock(blockId);
+      if (!itemId) continue;
       if (def.shape === 'cross' || def.shape === 'torch' || def.shape === 'liquid') {
-        icons.set(id, tileIconCanvas(def.tex.py, SIZE).toDataURL());
+        const url = tileIconCanvas(def.tex.py, SIZE).toDataURL();
+        icons.set(itemId, url);
+        icons.set(blockId, url);
         continue;
       }
-      const mesh = new THREE.Mesh(this.heldGeometry(id), this.materials.solid);
+      const mesh = new THREE.Mesh(this.heldGeometry(blockId), this.materials.solid);
       iconScene.add(mesh);
       this.renderer.setRenderTarget(rt);
       this.renderer.setClearColor(0x000000, 0);
@@ -933,6 +1447,62 @@ class Game {
         }
       }
       ctx.putImageData(img, 0, 0);
+      const url = cnv.toDataURL();
+      icons.set(itemId, url);
+      icons.set(blockId, url);
+    }
+
+    for (const [id, def] of ITEMS) {
+      if (icons.has(id)) continue;
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      ctx.imageSmoothingEnabled = false;
+      const color = def.icon.color || '#bbbbbb';
+      const hi = def.icon.highlight || '#eeeeee';
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'square';
+      ctx.lineJoin = 'miter';
+      if (def.icon.type === 'stick') {
+        ctx.strokeStyle = '#5c3a20';
+        ctx.beginPath(); ctx.moveTo(18, 52); ctx.lineTo(48, 12); ctx.stroke();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(18, 50); ctx.lineTo(48, 12); ctx.stroke();
+      } else if (def.icon.type === 'tool') {
+        ctx.strokeStyle = '#77502d';
+        ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.moveTo(30, 54); ctx.lineTo(34, 19); ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.fillRect(13, 10, 39, 15);
+        ctx.fillStyle = hi;
+        ctx.fillRect(17, 12, 30, 4);
+      } else if (def.icon.type === 'ingot') {
+        ctx.fillStyle = '#8d8a82';
+        ctx.beginPath();
+        ctx.moveTo(10, 45); ctx.lineTo(19, 22); ctx.lineTo(47, 22);
+        ctx.lineTo(55, 45); ctx.lineTo(47, 52); ctx.lineTo(17, 52); ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = color;
+        ctx.fillRect(18, 28, 29, 17);
+        ctx.fillStyle = hi;
+        ctx.fillRect(22, 29, 22, 4);
+      } else if (def.icon.type === 'food') {
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(32, 36, 18, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = hi;
+        ctx.fillRect(21, 23, 8, 8);
+        ctx.fillStyle = '#4e7c32';
+        ctx.fillRect(34, 12, 12, 7);
+        ctx.fillStyle = '#654322';
+        ctx.fillRect(31, 15, 6, 10);
+      } else {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(13, 34); ctx.lineTo(24, 16); ctx.lineTo(45, 14);
+        ctx.lineTo(54, 32); ctx.lineTo(43, 51); ctx.lineTo(20, 49); ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = hi;
+        ctx.fillRect(23, 20, 15, 7);
+      }
       icons.set(id, cnv.toDataURL());
     }
     rt.dispose();
@@ -1011,6 +1581,7 @@ class Game {
 
   framePlaying(dt) {
     const p = this.player;
+    this.mobAttackCooldown = Math.max(0, this.mobAttackCooldown - dt);
 
     // ---- input snapshot ----
     const inputActive = !this.pickerOpen;
@@ -1024,10 +1595,12 @@ class Game {
     };
     const wantSprint = inputActive &&
       (this.keys.has('ControlLeft') || this.keys.has('ControlRight') || this.sprintLatch);
-    p.sprinting = wantSprint && input.forward && !input.sneak;
+    p.sprinting = wantSprint && input.forward && !input.sneak &&
+      (this.gameMode === 'creative' || this.hungerState.hunger > 0);
 
     // ---- simulate ----
     p.update(dt, input);
+    if (this.gameMode === 'survival' && p.sprinting) addExhaustion(this.hungerState, dt * 0.32);
 
     // void rescue
     if (p.pos.y < -14) {
@@ -1042,6 +1615,9 @@ class Game {
     // ---- player audio events ----
     for (const ev of p.events) {
       if (ev.type === 'step') this.audio.step(ev.id);
+      else if (ev.type === 'jump' && this.gameMode === 'survival') {
+        addExhaustion(this.hungerState, p.sprinting ? 0.22 : 0.12);
+      }
       else if (ev.type === 'land') {
         this.audio.land(ev.impact);
         if (this.spawnLandingProtected) {
@@ -1066,8 +1642,38 @@ class Game {
     else { this.outline.visible = false; this.crack.visible = false; }
 
     this.world.update(p.pos.x, p.pos.z, 5);
+    this.village?.update(this.world);
+    const residentSpawns = this.village?.takeResidentSpawns() || [];
+    if (residentSpawns.length) this.mobs.spawnResidents(residentSpawns);
     this.processSupportChecks();
     this.entities.update(dt);
+    this.itemEntities.update(dt, p, (stack) => this.tryPickupItem(stack));
+    this.mobs.update(dt, p, {
+      night: this.sky.dayLight < 0.34,
+      spawning: this.gameMode === 'survival',
+    });
+    if (this.state !== 'playing') return;
+
+    if (this.gameMode === 'survival') {
+      const healthDelta = tickHunger(this.hungerState, dt, {
+        health: this.health,
+        maxHealth: this.maxHealth,
+      });
+      if (healthDelta < 0) {
+        this.damage(-healthDelta, 'Starved');
+        if (this.state !== 'playing') return;
+      } else if (healthDelta > 0) {
+        this.health = Math.min(this.maxHealth, this.health + healthDelta);
+        this.ui.updateHealth(this.health, this.maxHealth, true);
+      }
+      this.blockEntities.update(
+        dt,
+        (x, z) => this.world.isLoaded(x, z),
+        (x, y, z) => this.world.getBlock(x, y, z) === B.FURNACE,
+      );
+      this.ui.updateHunger(this.hungerState.hunger, MAX_HUNGER, true);
+      if (this.pickerOpen) this.refreshSurvivalInventory();
+    }
 
     // ---- camera ----
     const eye = p.eyePosition(new THREE.Vector3());
@@ -1134,9 +1740,9 @@ class Game {
       `Block: ${bx} ${by} ${bz}   Chunk: ${cx} ${cz} [${bx & 15} ${bz & 15}]`,
       `Facing: ${facing} (yaw ${yawDeg.toFixed(1)}°, pitch ${THREE.MathUtils.radToDeg(p.pitch).toFixed(1)}°)`,
       `Biome: ${biome}   Time: ${this.sky.clockString()}`,
-      `Seed: ${this.worldSeed}   Mode: ${this.gameMode}   Health: ${this.health}/${this.maxHealth}`,
+      `Seed: ${this.worldSeed}   Mode: ${this.gameMode}   Health: ${this.health}/${this.maxHealth}   Hunger: ${this.hungerState.hunger.toFixed(1)}/${MAX_HUNGER}`,
       `Chunks: ${this.world.countLoaded()} ready / ${this.world.chunks.size} loaded   Edits: ${this.world.editCount}`,
-      `Entities: ${this.entities.list.length}   Particles: ${this.particles.list.length}`,
+      `Entities: ${this.entities.list.length + this.itemEntities.list.length}   Particles: ${this.particles.list.length}`,
       `Draw calls: ${this.lastDrawInfo.calls}   Tris: ${(this.lastDrawInfo.triangles / 1000).toFixed(1)}k`,
       `Flags: ${p.onGround ? 'ground ' : ''}${p.flying ? 'flying ' : ''}${p.inWater ? 'water ' : ''}${p.sprinting ? 'sprint ' : ''}${p.sneaking ? 'sneak' : ''}`,
       target ? `Target: ${BLOCKS[target.id].name} @ ${target.x} ${target.y} ${target.z}` : 'Target: —',

@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Voxel Game Test</title>
+<link rel="icon" href="data:," />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet" />
@@ -24,10 +25,56 @@
   <div id="crosshair"></div>
   <div id="item-name"></div>
   <div id="health"></div>
+  <div id="hunger"></div>
   <div id="hotbar"></div>
   <div id="debug" class="hidden"></div>
   <div id="underwater-overlay"></div>
   <div id="damage-vignette"></div>
+</div>
+
+<!-- ======================= Survival inventory ======================= -->
+<div id="survival-inventory" class="overlay hidden">
+  <div class="survival-window">
+    <div class="survival-title"><span id="survival-menu-title">Survival Inventory</span> <small>E / Esc to close</small></div>
+    <div class="survival-top">
+      <section id="craft-panel" class="craft-panel">
+        <div id="craft-label" class="panel-label">Crafting 2x2</div>
+        <div class="craft-row">
+          <div id="craft-grid"></div>
+          <div class="craft-arrow">→</div>
+          <div id="craft-output"></div>
+        </div>
+      </section>
+      <section id="furnace-panel" class="smelt-panel hidden">
+        <div class="panel-label">Furnace</div>
+        <div class="smelt-row">
+          <div>
+            <div class="slot-caption">Input</div>
+            <div id="smelt-input"></div>
+          </div>
+          <div class="smelt-plus">+</div>
+          <div>
+            <div class="slot-caption">Fuel</div>
+            <div id="smelt-fuel"></div>
+          </div>
+          <div class="smelt-progress"><div id="smelt-progress-fill"></div></div>
+          <div>
+            <div class="slot-caption">Output</div>
+            <div id="smelt-output"></div>
+          </div>
+        </div>
+      </section>
+      <section id="trade-panel" class="trade-panel hidden">
+        <div id="villager-name" class="panel-label">Settler</div>
+        <div id="villager-profession" class="slot-caption">Provisioner</div>
+        <div id="trade-list"></div>
+      </section>
+    </div>
+    <div class="panel-label">Inventory</div>
+    <div id="survival-main-grid"></div>
+    <div id="survival-hotbar-grid"></div>
+    <div id="inventory-cursor">Held: Empty</div>
+  </div>
 </div>
 
 <!-- ======================= Inventory picker ======================= -->
@@ -124,11 +171,11 @@
       <span>Place block</span><span>RIGHT CLICK</span>
       <span>Pick block</span><span>MIDDLE CLICK</span>
       <span>Select slot</span><span>1–9 or MOUSE WHEEL</span>
-      <span>Block inventory</span><span>E</span>
+      <span>Inventory</span><span>E</span>
       <span>Debug info</span><span>F3</span>
       <span>Pause</span><span>ESC</span>
     </div>
-    <div class="controls-note">Survival adds health, Minecraft-style fall damage and death. Blocks remain infinite.</div>
+    <div class="controls-note">Survival adds finite inventory, crafting, hunger, item drops, tools and smelting.</div>
     <button class="mc-button" id="btn-controls-done">Done</button>
   </div>
 </div>
