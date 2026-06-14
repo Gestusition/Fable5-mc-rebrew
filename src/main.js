@@ -135,6 +135,9 @@ class Game {
       water: this.makeWorldMaterial({
         map: waterTex, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide,
       }),
+      lava: this.makeWorldMaterial({
+        map: atlasTex, alphaTest: 0.5,
+      }),
     };
 
     // ---------- target outline + crack overlay ----------
@@ -338,7 +341,9 @@ class Game {
     this.mobs.setWorld(this.world);
 
     this.player = new Player(this.world);
-    this.spawn = this.world.gen.findSpawn();
+    this.spawn = this.saveData?.spawn
+      ? { x: this.saveData.spawn.x, y: this.saveData.spawn.y, z: this.saveData.spawn.z }
+      : this.world.gen.findSpawn();
     this.village = new VillageSystem(this.worldSeed, this.spawn, this.saveData?.village);
     this.pendingSavedMobs = this.saveData?.mobs || null;
     this.usedSavedPos = false;
@@ -559,6 +564,7 @@ class Game {
       mobs: this.mobs.serialize(),
       slot: this.selected,
       time: this.sky.timeOfDay,
+      spawn: this.spawn,
     };
     saveJSON(WORLD_KEY, this.saveData);
   }
@@ -1179,6 +1185,29 @@ class Game {
     }
     const target = this.currentTarget();
     const interaction = target ? BLOCKS[target.id]?.interaction : null;
+    // Door toggle
+    if (interaction === 'door') {
+      const newId = target.id === B.DOOR_CLOSED ? B.DOOR_OPEN : B.DOOR_CLOSED;
+      this.world.setBlock(target.x, target.y, target.z, newId);
+      this.audio.blockPlace(newId);
+      return false;
+    }
+    // Bed interaction
+    if (interaction === 'bed') {
+      if (this.sky.dayLight < 0.34) {
+        // Night: sleep and set spawn
+        this.spawn = {
+          x: target.x + 0.5,
+          y: target.y + 1,
+          z: target.z + 0.5,
+        };
+        this.sky.setTimeOfDay(0.1); // skip to morning
+        this.ui.showToast('Spawn point set. Good morning!');
+      } else {
+        this.ui.showToast('You can only sleep at night');
+      }
+      return false;
+    }
     if (this.gameMode === 'survival' && interaction) {
       this.openSurvivalMenu(interaction, target);
       return false;
@@ -1196,7 +1225,55 @@ class Game {
       }
       return false;
     }
+    // Door item placement
+    if (slot?.id === I.DOOR) {
+      return this.placeDoor();
+    }
+    // Bed item placement
+    if (slot?.id === I.BED) {
+      return this.placeBed();
+    }
     return def.blockId !== null ? this.placeBlock() : false;
+  }
+
+  placeDoor() {
+    const target = this.currentTarget();
+    if (!target) return false;
+    const slot = this.inventory[this.selected];
+    if (this.gameMode === 'survival' && (!slot || slot.count <= 0)) return false;
+    const cx = target.x + target.nx;
+    const cy = target.y + target.ny;
+    const cz = target.z + target.nz;
+    if (cy < 1 || cy >= 128) return false;
+    const cellId = this.world.getBlock(cx, cy, cz);
+    if (cellId !== B.AIR && !BLOCKS[cellId]?.replaceable) return false;
+    if (this.player.intersectsCell(cx, cy, cz)) return false;
+    this.world.setBlock(cx, cy, cz, B.DOOR_CLOSED);
+    this.consumeSelectedBlock();
+    this.audio.blockPlace(B.DOOR_CLOSED);
+    this.swing();
+    return true;
+  }
+
+  placeBed() {
+    const target = this.currentTarget();
+    if (!target) return false;
+    const slot = this.inventory[this.selected];
+    if (this.gameMode === 'survival' && (!slot || slot.count <= 0)) return false;
+    const cx = target.x + target.nx;
+    const cy = target.y + target.ny;
+    const cz = target.z + target.nz;
+    if (cy < 1 || cy >= 128) return false;
+    const cellId = this.world.getBlock(cx, cy, cz);
+    if (cellId !== B.AIR && !BLOCKS[cellId]?.replaceable) return false;
+    // Bed needs solid block below
+    const below = this.world.getBlock(cx, cy - 1, cz);
+    if (!BLOCKS[below]?.solid) return false;
+    this.world.setBlock(cx, cy, cz, B.BED);
+    this.consumeSelectedBlock();
+    this.audio.blockPlace(B.BED);
+    this.swing();
+    return true;
   }
 
   performTrade(index) {
@@ -1651,8 +1728,15 @@ class Game {
     this.mobs.update(dt, p, {
       night: this.sky.dayLight < 0.34,
       spawning: this.gameMode === 'survival',
+      gameMode: this.gameMode,
     });
     if (this.state !== 'playing') return;
+
+    // Lava damage
+    if (this.gameMode === 'survival' && p.inLava) {
+      this.damage(Math.ceil(4 * dt), 'Tried to swim in lava');
+      if (this.state !== 'playing') return;
+    }
 
     if (this.gameMode === 'survival') {
       const healthDelta = tickHunger(this.hungerState, dt, {
@@ -1700,8 +1784,8 @@ class Game {
     }
 
     // ---- environment ----
-    this.sky.setUnderwater(p.headInWater);
-    this.ui.setUnderwater(p.headInWater);
+    this.sky.setUnderwater(p.headInWater || p.headInLava);
+    this.ui.setUnderwater(p.headInWater || p.headInLava);
     this.sky.update(dt, this.camera.position);
     this.waterTex.offset.x = (t_now() * 0.018) % 1;
     this.waterTex.offset.y = (t_now() * 0.011) % 1;

@@ -248,6 +248,26 @@ export class WorldGen {
       }
     }
 
+    // -------- lava pools in deep caves --------
+    for (let lz = 0; lz < CHUNK; lz++) {
+      for (let lx = 0; lx < CHUNK; lx++) {
+        for (let y = 3; y < 18; y++) {
+          const i = idx(lx, y, lz);
+          if (blocks[i] !== B.AIR) continue;
+          const below = y > 0 ? blocks[idx(lx, y - 1, lz)] : B.BEDROCK;
+          if (below !== B.STONE && below !== B.BEDROCK) continue;
+          // Only create lava if this is a cave floor (air above solid)
+          const above = y < WORLD_H - 1 ? blocks[idx(lx, y + 1, lz)] : B.AIR;
+          if (above !== B.AIR) continue;
+          // Use seeded hash to decide: sparse small pools
+          const lavaHash = hf(hash3(x0 + lx, y, z0 + lz, seed ^ 0x1a0a));
+          if (lavaHash < 0.04) {
+            blocks[i] = B.LAVA;
+          }
+        }
+      }
+    }
+
     // -------- decorations (trees overlap chunk borders => margin scan) --------
     const set = (wx, wy, wz, id, replaceLeavesToo = false) => {
       const lx = wx - x0, lz = wz - z0;

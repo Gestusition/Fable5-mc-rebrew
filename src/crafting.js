@@ -38,6 +38,16 @@ export const RECIPES = [
     I.FURNACE,
     1,
   ),
+  shaped(
+    'door',
+    3,
+    2,
+    3,
+    [I.PLANKS, I.PLANKS, I.PLANKS, I.PLANKS, I.PLANKS, I.PLANKS],
+    I.DOOR,
+    3,
+  ),
+  shaped('bed', 3, 3, 1, [I.PLANKS, I.PLANKS, I.PLANKS], I.BED, 1),
 ];
 
 for (const material of materials) {

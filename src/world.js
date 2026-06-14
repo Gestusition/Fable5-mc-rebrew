@@ -23,6 +23,7 @@ class Chunk {
     this.torches = [];      // [x,y,z] world coords
     this.solidMesh = null;
     this.waterMesh = null;
+    this.lavaMesh = null;
     this.state = 'pending'; // pending -> generated -> ready
   }
 }
@@ -301,7 +302,7 @@ export class World {
   }
 
   meshChunk(c) {
-    const { solid, water } = buildChunkGeometries(this, c, { smoothLighting: this.smoothLighting });
+    const { solid, water, lava } = buildChunkGeometries(this, c, { smoothLighting: this.smoothLighting });
     this.removeMeshes(c);
     if (solid) {
       c.solidMesh = new THREE.Mesh(solid, this.materials.solid);
@@ -311,6 +312,11 @@ export class World {
       c.waterMesh = new THREE.Mesh(water, this.materials.water);
       c.waterMesh.renderOrder = 2;
       this.placeMesh(c, c.waterMesh);
+    }
+    if (lava) {
+      c.lavaMesh = new THREE.Mesh(lava, this.materials.lava);
+      c.lavaMesh.renderOrder = 1;
+      this.placeMesh(c, c.lavaMesh);
     }
     c.state = 'ready';
     this.stats.meshed++;
@@ -324,7 +330,7 @@ export class World {
   }
 
   removeMeshes(c) {
-    for (const k of ['solidMesh', 'waterMesh']) {
+    for (const k of ['solidMesh', 'waterMesh', 'lavaMesh']) {
       const m = c[k];
       if (m) {
         this.scene.remove(m);

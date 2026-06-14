@@ -11,7 +11,13 @@ export function getBlockDrops(blockId, toolItemId = null, random = Math.random) 
     case B.AIR:
     case B.BEDROCK:
     case B.WATER:
+    case B.LAVA:
       return [];
+    case B.DOOR_CLOSED:
+    case B.DOOR_OPEN:
+      return [{ id: I.DOOR, count: 1 }];
+    case B.BED:
+      return [{ id: I.BED, count: 1 }];
     case B.GRASS:
     case B.SNOW_GRASS:
       return [{ id: I.DIRT, count: 1 }];

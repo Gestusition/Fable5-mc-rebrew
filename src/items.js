@@ -35,6 +35,12 @@ export const I = {
   APPLE: 'food:apple',
   RAW_MEAT: 'food:raw_meat',
   COOKED_MEAT: 'food:cooked_meat',
+  RAW_PORK: 'food:raw_pork',
+  COOKED_PORK: 'food:cooked_pork',
+  RAW_MUTTON: 'food:raw_mutton',
+  COOKED_MUTTON: 'food:cooked_mutton',
+  DOOR: 'item:door',
+  BED: 'item:bed',
 };
 
 const BLOCK_ITEM_IDS = new Map([
@@ -121,6 +127,30 @@ ITEMS.set(I.RAW_MEAT, item(I.RAW_MEAT, 'Raw Game Meat', {
 ITEMS.set(I.COOKED_MEAT, item(I.COOKED_MEAT, 'Cooked Game Meat', {
   icon: { type: 'food', color: '#8b462d', highlight: '#d68a55' },
   food: { hunger: 8 },
+}));
+ITEMS.set(I.RAW_PORK, item(I.RAW_PORK, 'Raw Porkchop', {
+  icon: { type: 'food', color: '#e8a0a0', highlight: '#f5c4b8' },
+  food: { hunger: 3 },
+}));
+ITEMS.set(I.COOKED_PORK, item(I.COOKED_PORK, 'Cooked Porkchop', {
+  icon: { type: 'food', color: '#a45e30', highlight: '#d68a55' },
+  food: { hunger: 8 },
+}));
+ITEMS.set(I.RAW_MUTTON, item(I.RAW_MUTTON, 'Raw Mutton', {
+  icon: { type: 'food', color: '#c76e6e', highlight: '#e5a090' },
+  food: { hunger: 2 },
+}));
+ITEMS.set(I.COOKED_MUTTON, item(I.COOKED_MUTTON, 'Cooked Mutton', {
+  icon: { type: 'food', color: '#7a4025', highlight: '#c07848' },
+  food: { hunger: 6 },
+}));
+ITEMS.set(I.DOOR, item(I.DOOR, 'Wooden Door', {
+  icon: { type: 'generated', color: '#9a6d3c' },
+  blockId: null,
+}));
+ITEMS.set(I.BED, item(I.BED, 'Bed', {
+  icon: { type: 'generated', color: '#b33030' },
+  blockId: null,
 }));
 
 export function itemDef(id) {

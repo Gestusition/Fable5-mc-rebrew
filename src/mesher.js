@@ -18,6 +18,7 @@ import { B, BLOCKS } from './blocks.js';
 import { atlasUV } from './textures.js';
 import { CHUNK, WORLD_H, SEA, BIOME } from './worldgen.js';
 
+
 const AO_CURVE = [0.45, 0.64, 0.82, 1.0];
 const FACE_SHADE = { px: 0.6, nx: 0.6, py: 1.0, ny: 0.5, pz: 0.8, nz: 0.8 };
 
@@ -180,6 +181,7 @@ export function buildChunkGeometries(world, chunk, { smoothLighting = true } = {
   const ox = chunk.cx * CHUNK, oz = chunk.cz * CHUNK;
   const solid = new GeoBuf();
   const water = new GeoBuf();
+  const lava = new GeoBuf();
   const blocks = chunk.blocks;
   const biomes = chunk.biomes;
 
@@ -201,9 +203,18 @@ export function buildChunkGeometries(world, chunk, { smoothLighting = true } = {
           emitTorch(solid, def, lx, y, lz);
           continue;
         }
+        if (def.shape === 'door') {
+          emitDoor(solid, s, torches, hasTorches, def, lx, y, lz, ox, oz);
+          continue;
+        }
+        if (def.shape === 'slab') {
+          emitSlab(solid, s, torches, hasTorches, def, id, lx, y, lz, ox, oz, biomes);
+          continue;
+        }
 
         const isLiquid = def.shape === 'liquid';
-        const buf = isLiquid ? water : solid;
+        const isLava = id === B.LAVA;
+        const buf = isLiquid ? (isLava ? lava : water) : solid;
         const aboveSame = isLiquid && s.block(lx, y + 1, lz) === id;
 
         for (let f = 0; f < 6; f++) {
@@ -212,7 +223,7 @@ export function buildChunkGeometries(world, chunk, { smoothLighting = true } = {
           // visibility
           if (nIdx === id && CULL_SAME[id]) continue;
           if (nIdx !== B.AIR && OPAQUE[nIdx]) continue;
-          if (isLiquid && nIdx === B.WATER) continue;
+          if (isLiquid && (nIdx === B.WATER || nIdx === B.LAVA)) continue;
 
           // tile selection (biome-tinted grass tops in forests)
           let tile = def.tex[face.key];
@@ -288,7 +299,7 @@ export function buildChunkGeometries(world, chunk, { smoothLighting = true } = {
     }
   }
 
-  return { solid: solid.build(), water: water.build() };
+  return { solid: solid.build(), water: water.build(), lava: lava.build() };
 }
 
 // ------------------------------------------------------------
@@ -370,6 +381,74 @@ function emitTorch(buf, def, lx, y, lz) {
 }
 
 // ------------------------------------------------------------
+// Door shape (thin plank, full height)
+// ------------------------------------------------------------
+
+function emitDoor(buf, s, torches, hasTorches, def, lx, y, lz, ox, oz) {
+  const rect = uvRect(def.tex.py);
+  const cellId = s.block(lx, y, lz);
+  const sky = skyLightAt(s, lx, y, lz, cellId);
+  const torch = hasTorches ? torchLightAt(torches, ox + lx + 0.5, y + 0.5, oz + lz + 0.5) : 0;
+
+  const thin = 3 / 16; // door thickness
+  const z0 = 0.5 - thin / 2, z1 = 0.5 + thin / 2;
+
+  const mk = (x, vy, z, u, v) => ({ x: lx + x, y: y + vy, z: lz + z, u, v, r: sky, g: torch });
+  const ru = (u) => rect.u0 + (rect.u1 - rect.u0) * u;
+  const rv = (v) => rect.v0 + (rect.v1 - rect.v0) * v;
+
+  // front face (+z)
+  buf.quad([mk(0, 0, z1, ru(0), rv(0)), mk(1, 0, z1, ru(1), rv(0)), mk(1, 1, z1, ru(1), rv(1)), mk(0, 1, z1, ru(0), rv(1))]);
+  // back face (-z)
+  buf.quad([mk(1, 0, z0, ru(0), rv(0)), mk(0, 0, z0, ru(1), rv(0)), mk(0, 1, z0, ru(1), rv(1)), mk(1, 1, z0, ru(0), rv(1))]);
+  // top
+  buf.quad([mk(0, 1, z0, ru(0), rv(0)), mk(0, 1, z1, ru(0), rv(thin)), mk(1, 1, z1, ru(1), rv(thin)), mk(1, 1, z0, ru(1), rv(0))]);
+  // bottom
+  buf.quad([mk(0, 0, z1, ru(0), rv(0)), mk(0, 0, z0, ru(0), rv(thin)), mk(1, 0, z0, ru(1), rv(thin)), mk(1, 0, z1, ru(1), rv(0))]);
+  // left side
+  buf.quad([mk(0, 0, z0, ru(0), rv(0)), mk(0, 0, z1, ru(thin), rv(0)), mk(0, 1, z1, ru(thin), rv(1)), mk(0, 1, z0, ru(0), rv(1))]);
+  // right side
+  buf.quad([mk(1, 0, z1, ru(0), rv(0)), mk(1, 0, z0, ru(thin), rv(0)), mk(1, 1, z0, ru(thin), rv(1)), mk(1, 1, z1, ru(0), rv(1))]);
+}
+
+// ------------------------------------------------------------
+// Slab shape (half height block - used for beds)
+// ------------------------------------------------------------
+
+function emitSlab(buf, s, torches, hasTorches, def, id, lx, y, lz, ox, oz, biomes) {
+  const h = 0.5; // half height
+  const sky = skyLightAt(s, lx, y, lz, id);
+  const torch = hasTorches ? torchLightAt(torches, ox + lx + 0.5, y + 0.25, oz + lz + 0.5) : 0;
+
+  const mk = (x, vy, z, u, v) => ({ x: lx + x, y: y + vy, z: lz + z, u, v, r: sky, g: torch });
+
+  // top
+  const topRect = uvRect(def.tex.py);
+  const tru = (u) => topRect.u0 + (topRect.u1 - topRect.u0) * u;
+  const trv = (v) => topRect.v0 + (topRect.v1 - topRect.v0) * v;
+  buf.quad([mk(0, h, 0, tru(0), trv(0)), mk(0, h, 1, tru(0), trv(1)), mk(1, h, 1, tru(1), trv(1)), mk(1, h, 0, tru(1), trv(0))]);
+
+  // bottom
+  const botRect = uvRect(def.tex.ny);
+  const bru = (u) => botRect.u0 + (botRect.u1 - botRect.u0) * u;
+  const brv = (v) => botRect.v0 + (botRect.v1 - botRect.v0) * v;
+  buf.quad([mk(0, 0, 1, bru(0), brv(0)), mk(0, 0, 0, bru(0), brv(1)), mk(1, 0, 0, bru(1), brv(1)), mk(1, 0, 1, bru(1), brv(0))]);
+
+  // 4 sides (only lower half of texture)
+  const sideRect = uvRect(def.tex.px);
+  const sru = (u) => sideRect.u0 + (sideRect.u1 - sideRect.u0) * u;
+  const srv = (v) => sideRect.v0 + (sideRect.v1 - sideRect.v0) * v;
+  // +z
+  buf.quad([mk(0, 0, 1, sru(0), srv(0)), mk(1, 0, 1, sru(1), srv(0)), mk(1, h, 1, sru(1), srv(0.5)), mk(0, h, 1, sru(0), srv(0.5))]);
+  // -z
+  buf.quad([mk(1, 0, 0, sru(0), srv(0)), mk(0, 0, 0, sru(1), srv(0)), mk(0, h, 0, sru(1), srv(0.5)), mk(1, h, 0, sru(0), srv(0.5))]);
+  // +x
+  buf.quad([mk(1, 0, 1, sru(0), srv(0)), mk(1, 0, 0, sru(1), srv(0)), mk(1, h, 0, sru(1), srv(0.5)), mk(1, h, 1, sru(0), srv(0.5))]);
+  // -x
+  buf.quad([mk(0, 0, 0, sru(0), srv(0)), mk(0, 0, 1, sru(1), srv(0)), mk(0, h, 1, sru(1), srv(0.5)), mk(0, h, 0, sru(0), srv(0.5))]);
+}
+
+// ------------------------------------------------------------
 // Standalone block geometry (held item, falling blocks, icons)
 // ------------------------------------------------------------
 
@@ -396,6 +475,29 @@ export function buildBlockGeometry(id) {
           r: 1, g: 0,
         })));
       }
+    }
+  } else if (def.shape === 'door') {
+    // thin door shape for standalone geometry
+    const rect = uvRect(def.tex.py);
+    const thin = 3 / 16;
+    const z0 = 0.5 - thin / 2 - 0.5, z1 = 0.5 + thin / 2 - 0.5;
+    const ru = (u) => rect.u0 + (rect.u1 - rect.u0) * u;
+    const rv = (v) => rect.v0 + (rect.v1 - rect.v0) * v;
+    const mk = (x, vy, z, u, v) => ({ x, y: vy - 0.5, z, u, v, r: 0.8, g: 0 });
+    buf.quad([mk(0, 0, z1, ru(0), rv(0)), mk(1, 0, z1, ru(1), rv(0)), mk(1, 1, z1, ru(1), rv(1)), mk(0, 1, z1, ru(0), rv(1))]);
+    buf.quad([mk(1, 0, z0, ru(0), rv(0)), mk(0, 0, z0, ru(1), rv(0)), mk(0, 1, z0, ru(1), rv(1)), mk(1, 1, z0, ru(0), rv(1))]);
+  } else if (def.shape === 'slab') {
+    // half-height slab for standalone geometry
+    for (const face of FACES) {
+      const tile = def.tex[face.key];
+      const rect = uvRect(tile);
+      const shade = FACE_SHADE[face.key];
+      buf.quad(face.corners.map((c) => ({
+        x: c.pos[0] - 0.5, y: (c.pos[1] * 0.5) - 0.5, z: c.pos[2] - 0.5,
+        u: rect.u0 + (rect.u1 - rect.u0) * c.u,
+        v: rect.v0 + (rect.v1 - rect.v0) * c.v,
+        r: shade, g: 0,
+      })));
     }
   } else {
     for (const face of FACES) {

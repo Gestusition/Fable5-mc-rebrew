@@ -43,6 +43,10 @@ export const B = {
   TORCH: 35,
   CRAFTING_TABLE: 36,
   FURNACE: 37,
+  LAVA: 38,
+  DOOR_CLOSED: 39,
+  DOOR_OPEN: 40,
+  BED: 41,
 };
 
 // face keys: px (+x east), nx (west), py (top), ny (bottom), pz (south), nz (north)
@@ -180,6 +184,26 @@ BLOCKS[B.FURNACE] = def(B.FURNACE, {
   preferredToolType: 'pickaxe',
   interaction: 'furnace',
 });
+BLOCKS[B.LAVA] = def(B.LAVA, {
+  name: 'Lava', tex: { all: 'lava_still' }, shape: 'liquid', solid: false, opaque: false,
+  cullSame: true, aoCast: false, countsHeight: false, hardness: Infinity,
+  replaceable: false, light: 1,
+});
+BLOCKS[B.DOOR_CLOSED] = def(B.DOOR_CLOSED, {
+  name: 'Door', tex: { all: 'door' }, shape: 'door', solid: true, opaque: false,
+  aoCast: false, countsHeight: false, hardness: 0.45, sound: 'wood',
+  preferredToolType: 'axe', interaction: 'door',
+});
+BLOCKS[B.DOOR_OPEN] = def(B.DOOR_OPEN, {
+  name: 'Door (Open)', tex: { all: 'door' }, shape: 'door', solid: false, opaque: false,
+  aoCast: false, countsHeight: false, hardness: 0.45, sound: 'wood',
+  preferredToolType: 'axe', interaction: 'door',
+});
+BLOCKS[B.BED] = def(B.BED, {
+  name: 'Bed', tex: { top: 'bed_top', bottom: 'planks', side: 'bed_side' }, shape: 'slab', solid: true,
+  opaque: false, aoCast: false, countsHeight: false, hardness: 0.3, sound: 'wood',
+  interaction: 'bed',
+});
 
 export const blockDef = (id) => BLOCKS[id] || BLOCKS[B.AIR];
 export const isSolid = (id) => BLOCKS[id]?.solid ?? false;
@@ -191,7 +215,7 @@ export const PALETTE = [
   B.LEAVES, B.SPRUCE_LOG, B.SPRUCE_LEAVES, B.SAND, B.SANDSTONE, B.GRAVEL, B.GLASS, B.ICE, B.SNOW_BLOCK,
   B.SNOW_GRASS, B.OBSIDIAN, B.BEDROCK, B.COAL_ORE, B.IRON_ORE, B.GOLD_ORE, B.REDSTONE_ORE, B.DIAMOND_ORE, B.WATER,
   B.CACTUS, B.PUMPKIN, B.TNT, B.TORCH, B.FLOWER_RED, B.FLOWER_YELLOW, B.TALLGRASS, B.DEADBUSH,
-  B.CRAFTING_TABLE, B.FURNACE,
+  B.CRAFTING_TABLE, B.FURNACE, B.LAVA, B.DOOR_CLOSED, B.BED,
 ];
 
 export const DEFAULT_HOTBAR = [B.GRASS, B.DIRT, B.STONE, B.LOG, B.PLANKS, B.GLASS, B.SAND, B.TNT, B.TORCH];

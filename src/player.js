@@ -50,6 +50,8 @@ export class Player {
     this.sneaking = false;
     this.inWater = false;
     this.headInWater = false;
+    this.inLava = false;
+    this.headInLava = false;
     this.hitWall = false;
     this.eyeHeight = EYE_STAND;
 
@@ -97,12 +99,14 @@ export class Player {
     const wasInWater = this.inWater;
     const prevVy = this.vel.y;
 
-    // ---- water state ----
+    // ---- water/lava state ----
     const feetId = this.world.getBlock(Math.floor(this.pos.x), Math.floor(this.pos.y + 0.2), Math.floor(this.pos.z));
     const midId = this.world.getBlock(Math.floor(this.pos.x), Math.floor(this.pos.y + 1.0), Math.floor(this.pos.z));
     const eyeId = this.world.getBlock(Math.floor(this.pos.x), Math.floor(this.pos.y + this.eyeHeight), Math.floor(this.pos.z));
     this.inWater = feetId === B.WATER || midId === B.WATER;
     this.headInWater = eyeId === B.WATER;
+    this.inLava = feetId === B.LAVA || midId === B.LAVA;
+    this.headInLava = eyeId === B.LAVA;
 
     this.sneaking = input.sneak && !this.flying;
 
@@ -119,13 +123,14 @@ export class Player {
     // ---- target speed ----
     let speed;
     if (this.flying) speed = this.sprinting ? SPEED_FLY_SPRINT : SPEED_FLY;
+    else if (this.inLava) speed = 0.8; // very slow in lava
     else if (this.inWater) speed = this.sprinting ? SPEED_WATER * 1.45 : SPEED_WATER;
     else if (this.sneaking) speed = SPEED_SNEAK;
     else if (this.sprinting) speed = SPEED_SPRINT;
     else speed = SPEED_WALK;
 
     // ---- horizontal acceleration ----
-    const accel = this.flying ? 9 : this.inWater ? 7 : this.onGround ? 16 : 3.2;
+    const accel = this.flying ? 9 : (this.inWater || this.inLava) ? 7 : this.onGround ? 16 : 3.2;
     const k = Math.min(1, accel * h);
     this.vel.x += (fx * speed - this.vel.x) * k;
     this.vel.z += (fz * speed - this.vel.z) * k;
@@ -134,9 +139,30 @@ export class Player {
     if (this.flying) {
       const targetY = input.jump ? FLY_VERT : input.sneak ? -FLY_VERT : 0;
       this.vel.y += (targetY - this.vel.y) * Math.min(1, 11 * h);
+    } else if (this.inLava) {
+      // Lava: very dense, strong buoyancy, very high drag
+      this.vel.y -= 6 * h;                        // weak gravity in lava
+      this.vel.y *= Math.max(0, 1 - 5.0 * h);     // very high drag
+      // Buoyancy: push up toward surface
+      const lavaSurfaceY = Math.floor(this.pos.y + 0.5) + 1;
+      const depth = lavaSurfaceY - this.pos.y;
+      if (depth > 0) {
+        this.vel.y += depth * 8 * h; // buoyancy
+      }
+      if (input.jump) this.vel.y = Math.min(this.vel.y + 16 * h, 1.5);
+      // horizontal drag in lava
+      this.vel.x *= Math.max(0, 1 - 4.0 * h);
+      this.vel.z *= Math.max(0, 1 - 4.0 * h);
     } else if (this.inWater) {
-      this.vel.y -= 10 * h;                       // weak gravity
+      // Water: buoyancy keeps player near surface
+      this.vel.y -= 8 * h;                        // moderate gravity
       this.vel.y *= Math.max(0, 1 - 2.4 * h);     // water drag
+      // Buoyancy: push up more the deeper the player is
+      const waterSurfaceY = Math.floor(this.pos.y + 0.5) + 1;
+      const depth = waterSurfaceY - this.pos.y;
+      if (depth > 0.3) {
+        this.vel.y += depth * 14 * h; // buoyancy pushes up
+      }
       if (input.jump) this.vel.y = Math.min(this.vel.y + 42 * h, 3.6);
       // hop out of the water when pushing against an edge
       if (input.jump && this.hitWall && !this.headInWater) {
@@ -161,7 +187,7 @@ export class Player {
     const beforeY = this.pos.y;
     this.moveAxis(1, this.vel.y * h);
     const movedY = this.pos.y - beforeY;
-    if (this.flying || this.inWater) {
+    if (this.flying || this.inWater || this.inLava) {
       this.fallDistance = 0;
     } else if (movedY < 0) {
       this.fallDistance -= movedY;
@@ -326,7 +352,7 @@ export function raycastVoxel(world, origin, dir, maxDist) {
 
   for (let i = 0; i < 256; i++) {
     const id = world.getBlock(x, y, z);
-    if (id !== B.AIR && id !== B.WATER) {
+    if (id !== B.AIR && id !== B.WATER && id !== B.LAVA) {
       return { x, y, z, nx, ny, nz, id, dist: t };
     }
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {

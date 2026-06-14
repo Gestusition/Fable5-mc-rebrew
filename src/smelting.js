@@ -6,6 +6,8 @@ export const SMELT_SECONDS = 5;
 export const SMELT_RECIPES = new Map([
   [I.IRON_ORE, { outputId: I.IRON_INGOT, count: 1 }],
   [I.RAW_MEAT, { outputId: I.COOKED_MEAT, count: 1 }],
+  [I.RAW_PORK, { outputId: I.COOKED_PORK, count: 1 }],
+  [I.RAW_MUTTON, { outputId: I.COOKED_MUTTON, count: 1 }],
   [I.SAND, { outputId: I.GLASS, count: 1 }],
 ]);
 

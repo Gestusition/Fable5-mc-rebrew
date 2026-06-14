@@ -452,6 +452,68 @@ function paintTorch(px, rng) {
   px.set(7, 4, [255, 245, 180]); px.set(8, 4, [255, 233, 120]);
 }
 
+function paintLava(px, rng) {
+  for (let y = 0; y < 16; y++)
+    for (let x = 0; x < 16; x++) {
+      const s = Math.sin((x * 2 / 16) * Math.PI * 2 + (y / 16) * Math.PI * 3);
+      const c = s > 0.5 ? [255, 180, 40] : s < -0.4 ? [180, 50, 10] : [220, 110, 20];
+      px.set(x, y, mul(c, lum(rng, 0.08)));
+    }
+  // bright hot spots
+  for (let i = 0; i < 8; i++) {
+    px.set((rng() * 16) | 0, (rng() * 16) | 0, [255, 240, 120]);
+  }
+}
+
+function paintDoor(px, rng) {
+  // wooden door with planks, handle, and hinges
+  for (let y = 0; y < 16; y++) {
+    const board = (y / 4) | 0;
+    const shade = [1, 0.94, 1.02, 0.92][board];
+    for (let x = 0; x < 16; x++) {
+      if (y % 4 === 3 || x === 0 || x === 15) {
+        px.set(x, y, mul([84, 62, 32], lum(rng, 0.06)));
+      } else {
+        px.set(x, y, mul([158, 123, 72], shade * lum(rng, 0.07)));
+      }
+    }
+  }
+  // handle (right side, middle height)
+  px.set(12, 7, [60, 50, 30]); px.set(12, 8, [60, 50, 30]);
+  px.set(13, 7, [80, 68, 42]); px.set(13, 8, [80, 68, 42]);
+  // hinges
+  for (const hy of [2, 6, 12]) {
+    px.set(1, hy, [50, 50, 50]); px.set(1, hy + 1, [50, 50, 50]);
+  }
+}
+
+function paintBedTop(px, rng) {
+  // red blanket with white pillow at top
+  noiseFill(px, rng, [180, 40, 40], 0.08);
+  // pillow area (top 4 rows)
+  for (let y = 0; y < 4; y++)
+    for (let x = 2; x < 14; x++)
+      px.set(x, y, mul([230, 225, 218], lum(rng, 0.04)));
+  // pillow border
+  for (let x = 2; x < 14; x++) { px.set(x, 4, mul([160, 35, 35], lum(rng, 0.06))); }
+  // fold line
+  for (let x = 3; x < 13; x++) px.set(x, 8, mul([145, 30, 30], lum(rng, 0.06)));
+}
+
+function paintBedSide(px, rng) {
+  // bottom half is wood frame, top half is red blanket side
+  for (let y = 0; y < 16; y++)
+    for (let x = 0; x < 16; x++) {
+      if (y >= 8) {
+        px.set(x, y, mul([120, 88, 52], lum(rng, 0.07)));
+      } else {
+        px.set(x, y, mul([170, 38, 38], lum(rng, 0.08)));
+      }
+    }
+  // frame edge
+  for (let x = 0; x < 16; x++) px.set(x, 15, mul([95, 68, 38], lum(rng, 0.05)));
+}
+
 // ------------------------------------------------------------
 // Painter registry — order defines atlas layout
 // ------------------------------------------------------------
@@ -508,6 +570,10 @@ export const PAINTERS = {
   tallgrass: paintTallgrass,
   deadbush: paintDeadbush,
   torch: paintTorch,
+  lava_still: paintLava,
+  door: paintDoor,
+  bed_top: paintBedTop,
+  bed_side: paintBedSide,
 };
 
 export const TILE_NAMES = Object.keys(PAINTERS);
