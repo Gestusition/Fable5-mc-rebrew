@@ -311,8 +311,6 @@ export class UI {
   setPickerSelected(selected) {
     this.pickerSlotEls?.forEach((el, i) => el.classList.toggle('selected', i === selected));
   }
-    this.pickerSlotEls?.forEach((el, i) => el.classList.toggle('selected', i === selected));
-  }
 
   // ----------------------------------------------------------
   // Misc HUD
