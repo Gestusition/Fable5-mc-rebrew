@@ -393,7 +393,9 @@ function emitDoor(buf, s, torches, hasTorches, def, lx, y, lz, ox, oz) {
   const thin = 3 / 16; // door thickness
   const z0 = 0.5 - thin / 2, z1 = 0.5 + thin / 2;
 
-  const mk = (x, vy, z, u, v) => ({ x: lx + x, y: y + vy, z: lz + z, u, v, r: sky, g: torch });
+  const mk = def.id === B.DOOR_OPEN 
+    ? (x, vy, z, u, v) => ({ x: lx + 1 - z, y: y + vy, z: lz + x, u, v, r: sky, g: torch })
+    : (x, vy, z, u, v) => ({ x: lx + x, y: y + vy, z: lz + z, u, v, r: sky, g: torch });
   const ru = (u) => rect.u0 + (rect.u1 - rect.u0) * u;
   const rv = (v) => rect.v0 + (rect.v1 - rect.v0) * v;
 

@@ -1128,6 +1128,16 @@ class Game {
     }
     const removedId = this.world.setBlock(target.x, target.y, target.z, B.AIR);
     if (removedId === null) return;
+
+    if (removedId === B.DOOR_CLOSED || removedId === B.DOOR_OPEN) {
+      if (this.world.getBlock(target.x, target.y + 1, target.z) === B.DOOR_CLOSED || this.world.getBlock(target.x, target.y + 1, target.z) === B.DOOR_OPEN) {
+        this.world.setBlock(target.x, target.y + 1, target.z, B.AIR);
+      }
+      if (this.world.getBlock(target.x, target.y - 1, target.z) === B.DOOR_CLOSED || this.world.getBlock(target.x, target.y - 1, target.z) === B.DOOR_OPEN) {
+        this.world.setBlock(target.x, target.y - 1, target.z, B.AIR);
+      }
+    }
+
     const furnace = removedId === B.FURNACE
       ? this.blockEntities.removeFurnace(target.x, target.y, target.z)
       : null;
@@ -1189,6 +1199,16 @@ class Game {
     if (interaction === 'door') {
       const newId = target.id === B.DOOR_CLOSED ? B.DOOR_OPEN : B.DOOR_CLOSED;
       this.world.setBlock(target.x, target.y, target.z, newId);
+      
+      const topId = this.world.getBlock(target.x, target.y + 1, target.z);
+      if (topId === B.DOOR_CLOSED || topId === B.DOOR_OPEN) {
+        this.world.setBlock(target.x, target.y + 1, target.z, newId);
+      }
+      const botId = this.world.getBlock(target.x, target.y - 1, target.z);
+      if (botId === B.DOOR_CLOSED || botId === B.DOOR_OPEN) {
+        this.world.setBlock(target.x, target.y - 1, target.z, newId);
+      }
+
       this.audio.blockPlace(newId);
       return false;
     }
@@ -1244,11 +1264,17 @@ class Game {
     const cx = target.x + target.nx;
     const cy = target.y + target.ny;
     const cz = target.z + target.nz;
-    if (cy < 1 || cy >= 128) return false;
+    if (cy < 1 || cy >= WORLD_H - 1) return false;
+    
     const cellId = this.world.getBlock(cx, cy, cz);
-    if (cellId !== B.AIR && !BLOCKS[cellId]?.replaceable) return false;
-    if (this.player.intersectsCell(cx, cy, cz)) return false;
+    const topId = this.world.getBlock(cx, cy + 1, cz);
+    if ((cellId !== B.AIR && !BLOCKS[cellId]?.replaceable) || 
+        (topId !== B.AIR && !BLOCKS[topId]?.replaceable)) return false;
+        
+    if (this.player.intersectsCell(cx, cy, cz) || this.player.intersectsCell(cx, cy + 1, cz)) return false;
+    
     this.world.setBlock(cx, cy, cz, B.DOOR_CLOSED);
+    this.world.setBlock(cx, cy + 1, cz, B.DOOR_CLOSED);
     this.consumeSelectedBlock();
     this.audio.blockPlace(B.DOOR_CLOSED);
     this.swing();
