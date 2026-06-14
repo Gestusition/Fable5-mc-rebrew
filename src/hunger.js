@@ -33,14 +33,15 @@ export function tickHunger(state, dt, { health, maxHealth, passive = true } = {}
     state.starvationTimer += dt;
     if (state.starvationTimer >= 4) {
       state.starvationTimer %= 4;
-      healthDelta = -1;
+      if (health > 1) healthDelta = -1; // Don't kill the player from starvation
     }
   } else {
     state.starvationTimer = 0;
-    if (state.hunger >= 18 && health < maxHealth) {
+    // Regen health if hunger is at least half full (10+)
+    if (state.hunger >= 10 && health < maxHealth) {
       state.regenTimer += dt;
-      if (state.regenTimer >= 5) {
-        state.regenTimer %= 5;
+      if (state.regenTimer >= 3) { // Faster regen
+        state.regenTimer %= 3;
         healthDelta = 1;
         state.exhaustion += 1.5;
       }
