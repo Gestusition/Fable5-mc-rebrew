@@ -109,6 +109,7 @@ class Game {
       onCraftOutput: (action) => this.clickCraftOutput(action),
       onSmeltSlot: (slot, action) => this.clickSmeltSlot(slot, action),
       onTrade: (index) => this.performTrade(index),
+      onWorldSelect: (worldId) => this.selectWorld(worldId),
       onToggleMode: () => this.toggleGameMode(),
       onRespawn: () => this.respawn(),
       onDeathQuit: () => this.quitAfterDeath(),
@@ -401,12 +402,25 @@ class Game {
     this.saveData = loadJSON(`mcjs:world:${worldId}`) || {};
     const worldMeta = this.worldsList.find(w => w.id === worldId);
     if (worldMeta) {
-      this.gameMode = worldMeta.gameMode || 'survival';
+      const savedMode = worldMeta.gameMode || 'survival';
+      const targetMode = this.gameMode;
+      worldMeta.gameMode = targetMode;
       worldMeta.lastPlayed = Date.now();
       this.worldsList.sort((a, b) => b.lastPlayed - a.lastPlayed);
       saveJSON(WORLDS_LIST_KEY, this.worldsList);
       this.ui.setWorldsList(this.worldsList);
+      this.ui.$('world-select').value = worldId;
       this.ui.setGameMode(this.gameMode);
+      
+      if (savedMode !== targetMode) {
+        if (targetMode === 'creative') {
+          this.saveData.inventory = creativeInventory();
+        } else {
+          this.saveData.inventory = emptyInventory();
+          if (this.saveData.player) this.saveData.player.flying = false;
+        }
+        this.saveData.gameMode = targetMode;
+      }
       
       this.inventory = this.saveData.inventory || (this.gameMode === 'survival' ? emptyInventory() : creativeInventory());
       this.craftingGrid = this.saveData.craftingGrid || Array.from({ length: 4 }, emptySlot);
@@ -458,11 +472,18 @@ class Game {
     this.ui.setSeedPlaceholder(this.worldSeed);
     this.play(this.currentWorldId);
   }
+  selectWorld(id) {
+    const worldMeta = this.worldsList.find(w => w.id === id);
+    if (worldMeta) {
+      this.gameMode = worldMeta.gameMode || 'survival';
+      this.ui.setGameMode(this.gameMode);
+    }
+  }
 
   toggleGameMode() {
     this.gameMode = this.gameMode === 'survival' ? 'creative' : 'survival';
     if (this.gameMode === 'survival') {
-      this.player.flying = false;
+      if (this.player) this.player.flying = false;
       this.health = this.maxHealth;
       this.inventory = emptyInventory();
       this.hungerState = createHunger();
@@ -479,6 +500,25 @@ class Game {
     this.ui.updateHealth(this.health, this.maxHealth, this.gameMode === 'survival');
     this.ui.updateHunger(this.hungerState.hunger, MAX_HUNGER, this.gameMode === 'survival');
     this.refreshHotbar();
+
+    if (this.state === 'title') {
+      const selectVal = this.ui.$('world-select').value;
+      if (selectVal) {
+        const worldMeta = this.worldsList.find(w => w.id === selectVal);
+        if (worldMeta) {
+          worldMeta.gameMode = this.gameMode;
+          this.saveWorldsList();
+          this.ui.setWorldsList(this.worldsList);
+          this.ui.$('world-select').value = selectVal;
+        }
+      }
+    } else if (this.state === 'paused' || this.state === 'playing') {
+      const worldMeta = this.worldsList.find(w => w.id === this.currentWorldId);
+      if (worldMeta) {
+        worldMeta.gameMode = this.gameMode;
+        this.saveWorldsList();
+      }
+    }
   }
 
   finishLoading() {

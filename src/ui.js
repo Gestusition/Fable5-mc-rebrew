@@ -85,6 +85,9 @@ export class UI {
 
     click('btn-play', () => this.h.onPlay(this.$('world-select').value));
     click('btn-delete-world', () => this.h.onDeleteWorld(this.$('world-select').value));
+    this.$('world-select').addEventListener('change', (e) => {
+      this.h.onWorldSelect?.(e.target.value);
+    });
     click('btn-new-world', () => this.h.onNewWorld(
       this.$('world-name-input').value.trim() || 'New World',
       this.$('seed-input').value.trim()
@@ -93,6 +96,10 @@ export class UI {
     click('btn-title-controls', () => { this.controlsReturn = 'title'; this.hide('title'); this.show('controls'); });
 
     click('btn-resume', () => this.h.onResume());
+    click('btn-pause-gamemode', () => {
+      this.h.onToggleMode();
+      this.$('btn-pause-gamemode').textContent = `Game Mode: ${this.$('btn-game-mode').textContent.includes('Creative') ? 'Creative' : 'Survival'}`;
+    });
     click('btn-quit', () => this.h.onQuit());
     click('btn-options', () => { this.hide('pause'); this.syncOptions(); this.show('options'); });
     click('btn-controls', () => { this.controlsReturn = 'pause'; this.hide('pause'); this.show('controls'); });
@@ -168,11 +175,16 @@ export class UI {
       this.$('btn-delete-world').disabled = false;
       // Sort by lastPlayed in main.js, so first is latest
       select.value = worlds[0].id;
+      this.h.onWorldSelect?.(worlds[0].id);
     }
   }
 
   setGameMode(mode) {
-    this.$('btn-game-mode').textContent = `Game Mode: ${mode === 'survival' ? 'Survival' : 'Creative'}`;
+    const text = `Game Mode: ${mode === 'survival' ? 'Survival' : 'Creative'}`;
+    this.$('btn-game-mode').textContent = text;
+    if (this.$('btn-pause-gamemode')) {
+      this.$('btn-pause-gamemode').textContent = text;
+    }
   }
 
   setLoadingProgress(frac) {
