@@ -545,11 +545,12 @@ class Game {
   }
 
   quitToTitle() {
-    this.save();
+    this.saveWorld();
     this.state = 'title';
     this.pickerOpen = false;
     this.ui.hideAllMenus();
     this.ui.hide('hud');
+    this.ui.setWorldsList(this.worldsList);
     this.ui.show('title');
     document.exitPointerLock?.();
   }
