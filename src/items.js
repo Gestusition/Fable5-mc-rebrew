@@ -59,6 +59,8 @@ const BLOCK_ITEM_IDS = new Map([
   [B.IRON_ORE, I.IRON_ORE],
   [B.CRAFTING_TABLE, I.CRAFTING_TABLE],
   [B.FURNACE, I.FURNACE],
+  [B.DOOR_CLOSED, I.DOOR],
+  [B.BED, I.BED],
 ]);
 
 for (const blockId of PALETTE) {
@@ -146,11 +148,11 @@ ITEMS.set(I.COOKED_MUTTON, item(I.COOKED_MUTTON, 'Cooked Mutton', {
 }));
 ITEMS.set(I.DOOR, item(I.DOOR, 'Wooden Door', {
   icon: { type: 'generated', color: '#9a6d3c' },
-  blockId: null,
+  blockId: B.DOOR_CLOSED,
 }));
 ITEMS.set(I.BED, item(I.BED, 'Bed', {
   icon: { type: 'generated', color: '#b33030' },
-  blockId: null,
+  blockId: B.BED,
 }));
 
 export function itemDef(id) {

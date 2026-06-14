@@ -18,6 +18,7 @@ const materials = [
 
 export const RECIPES = [
   shaped('planks', 2, 1, 1, [I.LOG], I.PLANKS, 4),
+  shaped('planks-spruce', 2, 1, 1, ['block:18'], I.PLANKS, 4),
   shaped('sticks', 2, 1, 2, [I.PLANKS, I.PLANKS], I.STICK, 4),
   shaped(
     'crafting-table',
