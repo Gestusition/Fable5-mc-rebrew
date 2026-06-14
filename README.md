@@ -107,6 +107,5 @@ src/
 
 ## Deliberate scope cuts
 
-No mobs, crafting, or dropped item entities,
-no water flow simulation, no redstone. Torch light is distance-based (it can bleed through
+No dropped item entities, no water flow simulation, no redstone. Torch light is distance-based (it can bleed through
 thin walls), and skylight uses a heightmap rather than flood-fill.
