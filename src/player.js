@@ -157,10 +157,10 @@ export class Player {
       // Water: buoyancy keeps player near surface
       this.vel.y -= 8 * h;                        // moderate gravity
       this.vel.y *= Math.max(0, 1 - 2.4 * h);     // water drag
-      // Buoyancy: push up more the deeper the player is
+      // Buoyancy: push up more the deeper the player is, only when jumping
       const waterSurfaceY = Math.floor(this.pos.y + 0.5) + 1;
       const depth = waterSurfaceY - this.pos.y;
-      if (depth > 0.3) {
+      if (input.jump && depth > 0.3) {
         this.vel.y += depth * 14 * h; // buoyancy pushes up
       }
       if (input.jump) this.vel.y = Math.min(this.vel.y + 42 * h, 3.6);
