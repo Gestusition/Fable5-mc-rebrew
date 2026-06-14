@@ -1571,6 +1571,22 @@ class Game {
         ctx.fillRect(34, 12, 12, 7);
         ctx.fillStyle = '#654322';
         ctx.fillRect(31, 15, 6, 10);
+      } else if (def.icon.type === 'meat') {
+        ctx.fillStyle = '#dfdcd0'; // bone
+        ctx.fillRect(40, 16, 8, 8);
+        ctx.fillRect(44, 20, 8, 8);
+        ctx.lineWidth = 6; ctx.strokeStyle = '#dfdcd0';
+        ctx.beginPath(); ctx.moveTo(44, 20); ctx.lineTo(26, 38); ctx.stroke();
+        
+        ctx.fillStyle = color;
+        ctx.beginPath(); 
+        ctx.arc(28, 40, 14, 0, Math.PI * 2); 
+        ctx.arc(20, 32, 12, 0, Math.PI * 2); 
+        ctx.arc(36, 32, 12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = hi;
+        ctx.fillRect(20, 26, 8, 6);
       } else {
         ctx.fillStyle = color;
         ctx.beginPath();

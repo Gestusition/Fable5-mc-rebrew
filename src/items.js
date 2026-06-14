@@ -123,27 +123,27 @@ ITEMS.set(I.APPLE, item(I.APPLE, 'Wild Apple', {
   food: { hunger: 6 },
 }));
 ITEMS.set(I.RAW_MEAT, item(I.RAW_MEAT, 'Raw Game Meat', {
-  icon: { type: 'food', color: '#b75f5f', highlight: '#e89586' },
+  icon: { type: 'meat', color: '#b75f5f', highlight: '#e89586' },
   food: { hunger: 3 },
 }));
 ITEMS.set(I.COOKED_MEAT, item(I.COOKED_MEAT, 'Cooked Game Meat', {
-  icon: { type: 'food', color: '#8b462d', highlight: '#d68a55' },
+  icon: { type: 'meat', color: '#8b462d', highlight: '#d68a55' },
   food: { hunger: 8 },
 }));
 ITEMS.set(I.RAW_PORK, item(I.RAW_PORK, 'Raw Porkchop', {
-  icon: { type: 'food', color: '#e8a0a0', highlight: '#f5c4b8' },
+  icon: { type: 'meat', color: '#e8a0a0', highlight: '#f5c4b8' },
   food: { hunger: 3 },
 }));
 ITEMS.set(I.COOKED_PORK, item(I.COOKED_PORK, 'Cooked Porkchop', {
-  icon: { type: 'food', color: '#a45e30', highlight: '#d68a55' },
+  icon: { type: 'meat', color: '#a45e30', highlight: '#d68a55' },
   food: { hunger: 8 },
 }));
 ITEMS.set(I.RAW_MUTTON, item(I.RAW_MUTTON, 'Raw Mutton', {
-  icon: { type: 'food', color: '#c76e6e', highlight: '#e5a090' },
+  icon: { type: 'meat', color: '#c76e6e', highlight: '#e5a090' },
   food: { hunger: 2 },
 }));
 ITEMS.set(I.COOKED_MUTTON, item(I.COOKED_MUTTON, 'Cooked Mutton', {
-  icon: { type: 'food', color: '#7a4025', highlight: '#c07848' },
+  icon: { type: 'meat', color: '#7a4025', highlight: '#c07848' },
   food: { hunger: 6 },
 }));
 ITEMS.set(I.DOOR, item(I.DOOR, 'Wooden Door', {

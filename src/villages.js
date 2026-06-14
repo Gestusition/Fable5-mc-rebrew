@@ -126,7 +126,7 @@ function buildVillagePlan(site) {
     const doorX = x0 + 3;
     const doorZ = door === 'south' ? z1 : z0;
     set(doorX, base + 1, doorZ, B.DOOR_CLOSED);
-    set(doorX, base + 2, doorZ, B.AIR);
+    set(doorX, base + 2, doorZ, B.DOOR_CLOSED);
     for (const [wx, wz] of [[x0, z0 + 2], [x1, z0 + 2], [x0 + 2, z0], [x0 + 4, z1]]) {
       set(wx, base + 2, wz, B.GLASS);
     }
@@ -138,8 +138,9 @@ function buildVillagePlan(site) {
     }
     set(x0 + 1, base + 1, z0 + 1, B.CRAFTING_TABLE);
     set(x1 - 1, base + 1, z1 - 1, B.FURNACE);
-    // Add a bed inside the house
+    // Add a bed inside the house (2 blocks long)
     set(x0 + 1, base + 1, z1 - 1, B.BED);
+    set(x0 + 1, base + 1, z1 - 2, B.BED);
     const outsideZ = door === 'south' ? z1 + 1 : z0 - 1;
     set(doorX - 1, base + 1, outsideZ, B.TORCH);
   };
