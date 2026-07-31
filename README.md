@@ -109,3 +109,8 @@ src/
 
 No dropped item entities, no water flow simulation, no redstone. Torch light is distance-based (it can bleed through
 thin walls), and skylight uses a heightmap rather than flood-fill.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+

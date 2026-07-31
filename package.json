@@ -2,6 +2,7 @@
   "name": "minecraft-js-clone",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "A faithful Minecraft clone built with Three.js — procedural infinite terrain, biomes, caves, lighting, physics and more.",
   "scripts": {
