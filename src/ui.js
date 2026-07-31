@@ -25,12 +25,12 @@ const SPLASHES = [
 
 const TIPS = [
   'Tip: Double-tap SPACE to fly',
-  'Tip: Hold CTRL (or double-tap W) to sprint',
+  'Tip: Hold SHIFT (or double-tap W) to sprint',
   'Tip: Press E to choose any block',
   'Tip: TNT explodes when you break it…',
   'Tip: Torches light up caves',
   'Tip: Middle-click copies the block you aim at',
-  'Tip: SHIFT-sneaking stops you falling off edges',
+  'Tip: CTRL-sneaking stops you falling off edges',
 ];
 
 export class UI {

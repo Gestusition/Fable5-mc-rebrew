@@ -53,7 +53,7 @@ npm install && npm test
 - **Survival and Creative modes** selectable from the title screen
 - Survival starts with an empty hotbar, collects mined blocks into stacks, consumes placed blocks, has 20 health points, a heart HUD, death/respawning, and disables flight
 - **Minecraft-style fall damage**: the first 3 blocks are safe, then damage is `ceil(fall distance - 3)`; water and Creative flight reset the fall
-- First-person controller with Minecraft-tuned physics: walking 4.3 m/s, sprinting with **CTRL or double-tap W** (+FOV kick), sneaking **with edge protection**, swimming, creative **flying** (double-tap SPACE)
+- First-person controller with Minecraft-tuned physics: walking 4.3 m/s, sprinting with **SHIFT or double-tap W** (+FOV kick), sneaking **with edge protection**, swimming, creative **flying** (double-tap SPACE)
 - Hold-to-mine with per-block hardness; bedrock is unbreakable
 - Block placing with support rules (torches need floors, cacti need sand…), can't place inside yourself
 - **Falling sand & gravel**, chained support breaking (snap a flower's block and it pops)
@@ -72,8 +72,8 @@ npm install && npm test
 |---|---|
 | Move | W A S D |
 | Jump / swim up | SPACE |
-| Sneak / fly down | SHIFT |
-| Sprint | CTRL or double-tap W |
+| Sneak / fly down | CTRL |
+| Sprint | SHIFT or double-tap W |
 | Toggle fly (Creative) | Double-tap SPACE (or F) |
 | Break block | Hold LEFT CLICK |
 | Place block | RIGHT CLICK |

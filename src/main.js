@@ -790,8 +790,8 @@ class Game {
           this.lastW = now;
           break;
         }
-        case 'ControlLeft':
-        case 'ControlRight':
+        case 'ShiftLeft':
+        case 'ShiftRight':
           if (this.keys.has('KeyW')) this.ui.showToast('Sprinting');
           break;
         default:
@@ -1820,10 +1820,10 @@ class Game {
       left: inputActive && this.keys.has('KeyA'),
       right: inputActive && this.keys.has('KeyD'),
       jump: inputActive && this.keys.has('Space'),
-      sneak: inputActive && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')),
+      sneak: inputActive && (this.keys.has('ControlLeft') || this.keys.has('ControlRight')),
     };
     const wantSprint = inputActive &&
-      (this.keys.has('ControlLeft') || this.keys.has('ControlRight') || this.sprintLatch);
+      (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.sprintLatch);
     p.sprinting = wantSprint && input.forward && !input.sneak &&
       (this.gameMode === 'creative' || this.hungerState.hunger > 0);
 
